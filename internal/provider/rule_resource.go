@@ -669,4 +669,3 @@ func (m stateFromEnabledModifier) PlanModifyString(ctx context.Context, req plan
 		resp.PlanValue = types.StringValue("DISABLED")
 	}
 }
-
