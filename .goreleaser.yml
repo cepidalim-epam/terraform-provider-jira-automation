@@ -35,7 +35,6 @@ archives:
       - terraform-registry-manifest.json
       - LICENSE
       - README.md
-      - CHANGELOG.md
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
