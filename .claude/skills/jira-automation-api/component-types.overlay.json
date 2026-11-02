@@ -1,0 +1,877 @@
+{
+  "overlay": "1.0.0",
+  "info": {
+    "title": "Jira Automation Component Types Overlay",
+    "version": "1.0.0",
+    "x-description": "Enriches the official Atlassian Automation OAS with discovered component type strings and value schemas. The official spec leaves ComponentConfigDTO.type as a free-form string and value as oneOf [string, object]. This overlay fills that gap. All types were discovered via systematic UI + API probing (2026-02-19) and are marked confirmed unless noted otherwise."
+  },
+  "extends": "atlassian-automation-oas.json",
+  "actions": [
+    {
+      "target": "$.components.schemas.TriggerConfigDTO.properties.type",
+      "description": "Add known trigger type enum values",
+      "update": {
+        "x-known-values": {
+          "confirmed": [
+            "jira.manual.trigger.issue",
+            "jira.issue.event.trigger:transitioned",
+            "jira.issue.event.trigger:created",
+            "jira.issue.event.trigger:commented",
+            "jira.jql.scheduled",
+            "jira.incoming.webhook",
+            "jira.issue.field.changed"
+          ],
+          "inferred": [
+            "jira.issue.event.trigger:updated",
+            "jira.issue.event.trigger:deleted",
+            "jira.issue.event.trigger:assigned",
+            "jira.issue.event.trigger:linked",
+            "jira.issue.event.trigger:linkDeleted",
+            "jira.issue.event.trigger:commentEdited",
+            "jira.issue.event.trigger:commentDeleted",
+            "jira.issue.event.trigger:moved",
+            "jira.issue.event.trigger:workLogged",
+            "jira.issue.event.trigger:sprintStarted",
+            "jira.issue.event.trigger:sprintCompleted",
+            "jira.issue.event.trigger:sprintCreated",
+            "jira.issue.event.trigger:versionCreated",
+            "jira.issue.event.trigger:versionReleased",
+            "jira.issue.event.trigger:versionUnreleased",
+            "jira.issue.event.trigger:versionDeleted",
+            "jira.issue.event.trigger:versionUpdated"
+          ]
+        }
+      }
+    },
+    {
+      "target": "$.components.schemas.ComponentConfigDTO.properties.type",
+      "description": "Add known condition and action type enum values",
+      "update": {
+        "x-known-values": {
+          "conditions": [
+            "jira.issue.condition",
+            "jira.comparator.condition",
+            "jira.jql.condition",
+            "jira.user.condition",
+            "jira.issues.related.condition",
+            "jira.issue.hasAttachments",
+            "jira.condition.container.block",
+            "jira.condition.if.block"
+          ],
+          "actions": [
+            "codebarrel.action.log",
+            "jira.issue.edit",
+            "jira.issue.transition",
+            "jira.issue.comment",
+            "jira.issue.assign",
+            "jira.issue.create",
+            "jira.issue.clone",
+            "jira.issue.delete",
+            "jira.issue.link",
+            "jira.issue.delete.link",
+            "jira.issue.create.subtasks",
+            "jira.lookup.issues",
+            "jira.create.variable",
+            "jira.issue.outgoing.webhook",
+            "jira.issue.outgoing.email",
+            "jira.worklog.add",
+            "jira.issue.add.watcher",
+            "jira.work-item.remote-link.add",
+            "jira.issue.deleteattachment",
+            "jira.issue.delete.comment",
+            "jira.issue.comment.update",
+            "jira.issue.refresh.issue",
+            "jira.set.entity.property",
+            "jira.issue.set.security.level",
+            "jira.board.issue.move",
+            "jira.version.create",
+            "jira.version.release",
+            "jira.version.unrelease",
+            "jira.sprint.create",
+            "action.send-templated-email",
+            "jira.create.dynamic-mapping-variable",
+            "jira.create.mapping-variable",
+            "confluence.create-page.action",
+            "focus.link-work-to-focus-area.action",
+            "focus.unlink-work-from-focus-area.action",
+            "jira.sd.add.customer",
+            "jira.auto.approve.action",
+            "jsm.create.incident",
+            "cmdb.object.create",
+            "jira.sd.create.request",
+            "jira.cmdb.field.edit.attributes",
+            "cmdb.object.edit.attributes",
+            "jira.edit.request.type",
+            "security.vulnerability.link"
+          ]
+        }
+      }
+    },
+    {
+      "target": "$.components.schemas",
+      "description": "Add reusable schemas and per-type value schemas",
+      "update": {
+        "FieldReference": {
+          "type": "object",
+          "description": "Reusable field reference pattern used throughout component values.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ID", "NAME", "COPY", "SMART", "FREE", "REFERENCE"],
+              "description": "ID=by field ID, NAME=by display name, COPY=from issue (current/trigger/created), SMART=smart value expression {{...}}, FREE=literal text, REFERENCE=known entity (LAST_COMMENT)"
+            },
+            "value": { "type": "string" }
+          },
+          "required": ["type", "value"]
+        },
+        "OperationsArray": {
+          "type": "array",
+          "description": "Used by edit/create/clone/transition actions to set issue fields.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": { "$ref": "#/components/schemas/FieldReference" },
+              "fieldType": { "type": "string" },
+              "type": { "type": "string", "enum": ["SET", "APPEND", "REMOVE"] },
+              "value": {}
+            },
+            "required": ["field", "fieldType", "type", "value"]
+          }
+        },
+
+        "TriggerValue_manual": {
+          "x-type": "jira.manual.trigger.issue",
+          "x-ui-name": "Manual trigger from work item",
+          "x-schema-version": 3,
+          "type": "object",
+          "properties": {
+            "inputFromUsers": { "type": "boolean" },
+            "inputPrompts": { "type": "array", "items": { "type": "object" } },
+            "groups": { "type": "array", "items": { "type": "string" } },
+            "issueFilter": { "type": ["string", "null"] },
+            "jQLFilter": { "type": ["string", "null"] }
+          }
+        },
+        "TriggerValue_transitioned": {
+          "x-type": "jira.issue.event.trigger:transitioned",
+          "x-ui-name": "Work item transitioned",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "eventTypes": { "type": "array", "items": { "type": "string" } },
+            "eventFilters": { "type": "array", "items": { "type": "string" }, "description": "ARI scope: ari:cloud:jira::site/{cloudId} or ari:cloud:jira:{cloudId}:project/{projectId}" },
+            "fromStatus": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "toStatus": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "eventKey": { "type": "string" },
+            "issueEvent": { "type": "string" }
+          }
+        },
+        "TriggerValue_created": {
+          "x-type": "jira.issue.event.trigger:created",
+          "x-ui-name": "Work item created",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "eventKey": { "type": "string", "const": "jira:issue_created" },
+            "issueEvent": { "type": "string", "const": "issue_created" },
+            "eventFilters": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "TriggerValue_commented": {
+          "x-type": "jira.issue.event.trigger:commented",
+          "x-ui-name": "Work item commented",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "eventTypes": { "type": "array", "items": { "type": "string" } },
+            "eventFilters": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "TriggerValue_scheduled": {
+          "x-type": "jira.jql.scheduled",
+          "x-ui-name": "Scheduled",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "schedule": {
+              "type": "object",
+              "properties": {
+                "cronExpression": { "type": "string" },
+                "method": { "type": "string", "enum": ["BASIC", "CRON"] },
+                "rate": { "type": "integer" },
+                "rateInterval": { "type": "integer" },
+                "rRule": { "type": "string" }
+              }
+            },
+            "jql": { "type": "string" },
+            "executionMode": { "type": "string", "enum": ["nosearch", "search"] },
+            "onlyUpdatedIssues": { "type": "boolean" }
+          }
+        },
+        "TriggerValue_incomingWebhook": {
+          "x-type": "jira.incoming.webhook",
+          "x-ui-name": "Incoming webhook",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "webhookToken": { "type": "string" },
+            "searchOrProvide": { "type": "string", "enum": ["provided", "search"] },
+            "jql": { "type": ["string", "null"] }
+          }
+        },
+        "TriggerValue_fieldChanged": {
+          "x-type": "jira.issue.field.changed",
+          "x-ui-name": "Field value changed",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "eventFilters": { "type": "array", "items": { "type": "string" } },
+            "changeType": { "type": "string", "enum": ["ANY_CHANGE", "SPECIFIC_VALUE"] },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": { "type": "string" },
+                  "type": { "type": "string", "const": "field" }
+                }
+              }
+            },
+            "actions": { "type": "array" }
+          }
+        },
+
+        "ConditionValue_issueFields": {
+          "x-type": "jira.issue.condition",
+          "x-ui-name": "Work item fields condition",
+          "x-schema-version": 3,
+          "type": "object",
+          "properties": {
+            "selectedField": { "$ref": "#/components/schemas/FieldReference" },
+            "selectedFieldType": { "type": "string" },
+            "comparison": { "type": "string", "enum": ["NOT_EMPTY", "EMPTY", "EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN", "CONTAINS", "NOT_CONTAINS"] },
+            "compareValue": {}
+          },
+          "required": ["selectedField", "selectedFieldType", "comparison"]
+        },
+        "ConditionValue_comparator": {
+          "x-type": "jira.comparator.condition",
+          "x-ui-name": "Smart values condition (Advanced Compare)",
+          "x-schema-version": 1,
+          "description": "Compares two smart value expressions. Better custom field support than jira.issue.condition. Empty second + NOT_EQUALS = 'is not empty'.",
+          "type": "object",
+          "properties": {
+            "first": { "type": "string", "description": "Left-hand smart value, e.g. {{issue.customfield_10709}}" },
+            "second": { "type": "string", "description": "Right-hand value. Empty string with NOT_EQUALS = is not empty." },
+            "operator": { "type": "string", "enum": ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "LESS_THAN", "CONTAINS", "NOT_CONTAINS", "STARTS_WITH", "ENDS_WITH", "MATCHES"] }
+          },
+          "required": ["first", "second", "operator"]
+        },
+        "ConditionValue_jql": {
+          "x-type": "jira.jql.condition",
+          "x-ui-name": "JQL condition",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "jql": { "type": "string" }
+          },
+          "required": ["jql"]
+        },
+        "ConditionValue_user": {
+          "x-type": "jira.user.condition",
+          "x-ui-name": "User condition",
+          "x-schema-version": 6,
+          "type": "object",
+          "properties": {
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": { "type": "string", "description": "e.g. reporter, assignee" },
+                  "check": { "type": "string", "enum": ["USER_IS", "USER_IS_NOT", "IN_GROUP", "NOT_IN_GROUP"] },
+                  "criteria": { "type": "array" }
+                }
+              }
+            },
+            "operator": { "type": "string", "enum": ["AND", "OR"] }
+          }
+        },
+        "ConditionValue_relatedIssues": {
+          "x-type": "jira.issues.related.condition",
+          "x-ui-name": "Related work items condition",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "relatedType": { "type": "string", "enum": ["subtasks", "parent", "linked", "epic"] },
+            "linkTypes": { "type": "array", "items": { "type": "string" } },
+            "operator": { "type": "string", "enum": ["present", "absent"] },
+            "relatedJql": { "type": "string" },
+            "compareJql": { "type": "string" },
+            "compareValue": { "type": "integer" },
+            "similarityLimit": { "type": "integer" },
+            "jql": { "type": "string" }
+          }
+        },
+        "ConditionValue_hasAttachments": {
+          "x-type": "jira.issue.hasAttachments",
+          "x-ui-name": "Work item attachments",
+          "x-schema-version": 1,
+          "type": "boolean",
+          "description": "Value is a plain boolean, not an object."
+        },
+        "ConditionValue_containerBlock": {
+          "x-type": "jira.condition.container.block",
+          "x-ui-name": "IF/ELSE container",
+          "x-schema-version": 1,
+          "x-component": "CONDITION",
+          "type": "object",
+          "description": "Outer wrapper for IF/ELSE. Children array holds CONDITION_BLOCK items.",
+          "properties": {}
+        },
+        "ConditionValue_ifBlock": {
+          "x-type": "jira.condition.if.block",
+          "x-ui-name": "IF block",
+          "x-schema-version": 1,
+          "x-component": "CONDITION_BLOCK",
+          "type": "object",
+          "description": "IF branch. conditions[] = checks, children[] = guarded actions. ELSE = sibling with empty conditions[].",
+          "properties": {
+            "conditionMatchType": { "type": "string", "enum": ["ALL", "ANY"] }
+          }
+        },
+
+        "ActionValue_log": {
+          "x-type": "codebarrel.action.log",
+          "x-ui-name": "Log action",
+          "x-schema-version": 1,
+          "type": "string",
+          "description": "Value is a plain string (log message), not an object."
+        },
+        "ActionValue_editFields": {
+          "x-type": "jira.issue.edit",
+          "x-ui-name": "Edit work item fields",
+          "x-schema-version": 12,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" }
+          }
+        },
+        "ActionValue_transition": {
+          "x-type": "jira.issue.transition",
+          "x-ui-name": "Transition work item",
+          "x-schema-version": 11,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" },
+            "destinationStatus": { "$ref": "#/components/schemas/FieldReference" },
+            "transitionMatch": { "type": "string" }
+          }
+        },
+        "ActionValue_comment": {
+          "x-type": "jira.issue.comment",
+          "x-ui-name": "Add comment",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "comment": { "type": "string" },
+            "publicComment": { "type": "boolean" },
+            "commentVisibility": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" },
+            "addCommentOnce": { "type": "boolean" }
+          }
+        },
+        "ActionValue_assign": {
+          "x-type": "jira.issue.assign",
+          "x-ui-name": "Assign work item",
+          "x-schema-version": 5,
+          "type": "object",
+          "properties": {
+            "assignType": { "type": "string", "enum": ["SPECIFY_USER", "AUTOMATIC", "UNASSIGN", "COPY_FROM_FIELD"] },
+            "assignee": { "$ref": "#/components/schemas/FieldReference" },
+            "excludedUsers": { "type": "array", "items": { "type": "string" } },
+            "userList": { "type": "array" }
+          }
+        },
+        "ActionValue_createIssue": {
+          "x-type": "jira.issue.create",
+          "x-ui-name": "Create work item",
+          "x-schema-version": 12,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" }
+          }
+        },
+        "ActionValue_cloneIssue": {
+          "x-type": "jira.issue.clone",
+          "x-ui-name": "Clone work item",
+          "x-schema-version": 12,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" }
+          }
+        },
+        "ActionValue_deleteIssue": {
+          "x-type": "jira.issue.delete",
+          "x-ui-name": "Delete work item",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "sendNotifications": { "type": "boolean" }
+          }
+        },
+        "ActionValue_linkIssue": {
+          "x-type": "jira.issue.link",
+          "x-ui-name": "Link work item",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "linkType": { "type": "string", "description": "Format: direction:linkTypeId, e.g. inward:10145" },
+            "issue": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        },
+        "ActionValue_deleteLink": {
+          "x-type": "jira.issue.delete.link",
+          "x-ui-name": "Delete link(s)",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "linkTypes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ActionValue_createSubtasks": {
+          "x-type": "jira.issue.create.subtasks",
+          "x-ui-name": "Create sub-tasks",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "subtasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "type": { "type": "string" },
+                  "summary": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "ActionValue_lookupIssues": {
+          "x-type": "jira.lookup.issues",
+          "x-ui-name": "Lookup work items",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "$ref": "#/components/schemas/FieldReference" },
+            "type": { "type": "string", "const": "JQL" },
+            "query": { "$ref": "#/components/schemas/FieldReference" },
+            "lazy": { "type": "boolean" }
+          }
+        },
+        "ActionValue_createVariable": {
+          "x-type": "jira.create.variable",
+          "x-ui-name": "Create variable",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "$ref": "#/components/schemas/FieldReference" },
+            "type": { "type": "string", "const": "SMART" },
+            "query": { "$ref": "#/components/schemas/FieldReference" },
+            "lazy": { "type": "boolean" }
+          }
+        },
+        "ActionValue_webhook": {
+          "x-type": "jira.issue.outgoing.webhook",
+          "x-ui-name": "Send web request",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "headers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["string", "null"] },
+                  "name": { "type": "string" },
+                  "value": { "type": "string", "description": "Redacted to *** on reads if headerSecure=true" },
+                  "headerSecure": { "type": "boolean" }
+                }
+              }
+            },
+            "sendIssue": { "type": "boolean" },
+            "contentType": { "type": "string", "enum": ["application/json", "custom"] },
+            "customBody": { "type": "string" },
+            "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
+            "responseEnabled": { "type": "boolean" },
+            "continueOnErrorEnabled": { "type": "boolean" }
+          }
+        },
+        "ActionValue_email": {
+          "x-type": "jira.issue.outgoing.email",
+          "x-ui-name": "Send email",
+          "x-schema-version": 5,
+          "type": "object",
+          "properties": {
+            "fromName": { "type": "string" },
+            "replyTo": { "type": "string" },
+            "to": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "cc": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "bcc": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "subject": { "type": "string" },
+            "body": { "type": "string" },
+            "mimeType": { "type": "string", "enum": ["text/html", "text/plain"] },
+            "convertLineBreaks": { "type": "boolean" }
+          }
+        },
+        "ActionValue_logWork": {
+          "x-type": "jira.worklog.add",
+          "x-ui-name": "Log work",
+          "x-schema-version": 4,
+          "type": "object",
+          "properties": {
+            "timeSpent": { "type": "string", "description": "e.g. 1h, 30m, 2d" },
+            "dateStarted": { "$ref": "#/components/schemas/FieldReference" },
+            "description": { "type": "string" },
+            "adjustEstimate": { "type": "string", "enum": ["ADJUST_AUTOMATICALLY", "LEAVE_UNCHANGED", "SET_TO_VALUE", "REDUCE_BY_VALUE"] },
+            "remainingEstimateValue": { "type": ["string", "null"] },
+            "visibility": { "type": ["object", "null"] }
+          }
+        },
+        "ActionValue_watchers": {
+          "x-type": "jira.issue.add.watcher",
+          "x-ui-name": "Add/Remove watchers",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "watchers": { "type": "array" },
+            "removeWatchers": { "type": "array" },
+            "removeAll": { "type": "boolean" }
+          }
+        },
+        "ActionValue_remoteLink": {
+          "x-type": "jira.work-item.remote-link.add",
+          "x-ui-name": "Add web link",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "title": { "type": "string" }
+          }
+        },
+        "ActionValue_deleteAttachment": {
+          "x-type": "jira.issue.deleteattachment",
+          "x-ui-name": "Delete attachment",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "regex": { "type": "string" },
+            "matches": { "type": "string", "enum": ["matches", "not_matches"] }
+          }
+        },
+        "ActionValue_deleteComment": {
+          "x-type": "jira.issue.delete.comment",
+          "x-ui-name": "Delete comment",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "commentId": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        },
+        "ActionValue_editComment": {
+          "x-type": "jira.issue.comment.update",
+          "x-ui-name": "Edit comment",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "commentId": { "$ref": "#/components/schemas/FieldReference" },
+            "comment": { "type": "string" },
+            "publicComment": { "type": ["boolean", "null"] },
+            "commentVisibility": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" },
+            "editVisibility": { "type": "boolean" }
+          }
+        },
+        "ActionValue_refreshIssue": {
+          "x-type": "jira.issue.refresh.issue",
+          "x-ui-name": "Re-fetch work item data",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "delayMs": { "type": ["integer", "null"] }
+          }
+        },
+        "ActionValue_setEntityProperty": {
+          "x-type": "jira.set.entity.property",
+          "x-ui-name": "Set entity property",
+          "x-schema-version": 3,
+          "type": "object",
+          "properties": {
+            "entityType": { "type": "string", "enum": ["ISSUE", "PROJECT", "USER"] },
+            "entity": { "type": ["object", "null"] },
+            "key": { "type": "string" },
+            "value": {}
+          }
+        },
+        "ActionValue_setSecurityLevel": {
+          "x-type": "jira.issue.set.security.level",
+          "x-ui-name": "Set security level",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "issueSecurityScheme": { "$ref": "#/components/schemas/FieldReference" },
+            "securityLevel": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        },
+        "ActionValue_moveToBoard": {
+          "x-type": "jira.board.issue.move",
+          "x-ui-name": "Move to board",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "boardId": { "type": "integer" },
+            "moveTarget": { "type": "string", "enum": ["BOARD", "BACKLOG"] }
+          }
+        },
+        "ActionValue_createVersion": {
+          "x-type": "jira.version.create",
+          "x-ui-name": "Create version",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "versionName": { "type": "string" },
+            "releaseDate": { "type": ["string", "null"] },
+            "overrideReleaseDate": { "type": "string", "enum": ["SET_ON_EMPTY", "ALWAYS", "NEVER"] },
+            "project": { "$ref": "#/components/schemas/FieldReference" },
+            "startDate": { "type": ["string", "null"] },
+            "description": { "type": ["string", "null"] }
+          }
+        },
+        "ActionValue_releaseVersion": {
+          "x-type": "jira.version.release",
+          "x-ui-name": "Release version",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "versionName": { "type": ["string", "null"] },
+            "releaseDate": { "type": ["string", "null"] },
+            "overrideReleaseDate": { "type": "string", "enum": ["SET_ON_EMPTY", "ALWAYS", "NEVER"] },
+            "project": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        },
+        "ActionValue_unreleaseVersion": {
+          "x-type": "jira.version.unrelease",
+          "x-ui-name": "Unrelease version",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "versionName": { "type": "string" },
+            "releaseDate": { "type": "string" },
+            "overrideReleaseDate": { "type": "string", "enum": ["SET_ON_EMPTY", "ALWAYS", "NEVER"] },
+            "project": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        },
+        "ActionValue_createSprint": {
+          "x-type": "jira.sprint.create",
+          "x-ui-name": "Create sprint",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "boardId": { "type": "integer" },
+            "sprintName": { "type": "string" },
+            "startDate": { "type": ["string", "null"] },
+            "endDate": { "type": ["string", "null"] },
+            "sprintGoal": { "type": ["string", "null"] }
+          }
+        },
+        "ActionValue_templatedEmail": {
+          "x-type": "action.send-templated-email",
+          "x-ui-name": "Send customized email",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "to": { "type": "array", "items": { "$ref": "#/components/schemas/FieldReference" } },
+            "convertLineBreaks": { "type": "boolean" },
+            "templateContextData": {
+              "type": "object",
+              "properties": {
+                "emailName": { "type": "string" },
+                "body": { "type": "string" },
+                "bodyType": { "type": "string", "enum": ["ADF", "HTML"] },
+                "subject": { "type": "string" },
+                "fromEmailAddress": { "type": "string" }
+              }
+            }
+          }
+        },
+        "ActionValue_dynamicLookupTable": {
+          "x-type": "jira.create.dynamic-mapping-variable",
+          "x-ui-name": "Create dynamic lookup table",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "source": { "type": "string" },
+            "keyProperty": { "type": "string" },
+            "valueProperty": { "type": "string" },
+            "clashOption": { "type": "string", "enum": ["USE_LAST", "USE_FIRST"] }
+          }
+        },
+        "ActionValue_lookupTable": {
+          "x-type": "jira.create.mapping-variable",
+          "x-ui-name": "Create lookup table",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "name": { "$ref": "#/components/schemas/FieldReference" },
+            "mappings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": { "type": "string" },
+                  "value": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "ActionValue_confluencePage": {
+          "x-type": "confluence.create-page.action",
+          "x-ui-name": "Publish Confluence page",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "isPageBodyAdf": { "type": "boolean" }
+          }
+        },
+        "ActionValue_linkFocusArea": {
+          "x-type": "focus.link-work-to-focus-area.action",
+          "x-ui-name": "Link to Focus area",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": { "focusArea": { "type": ["object", "null"] } }
+        },
+        "ActionValue_unlinkFocusArea": {
+          "x-type": "focus.unlink-work-from-focus-area.action",
+          "x-ui-name": "Unlink from Focus area",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": { "focusArea": { "type": ["object", "null"] } }
+        },
+        "ActionValue_addCustomer": {
+          "x-type": "jira.sd.add.customer",
+          "x-ui-name": "Add service space customer",
+          "x-schema-version": 2,
+          "type": "object",
+          "properties": {
+            "email": { "type": "string" },
+            "displayName": { "type": "string" },
+            "organization": { "type": ["string", "null"] }
+          }
+        },
+        "ActionValue_approveDecline": {
+          "x-type": "jira.auto.approve.action",
+          "x-ui-name": "Approve/Decline request",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "approveAction": { "type": "string", "enum": ["Approve", "Decline"] }
+          }
+        },
+        "ActionValue_createIncident": {
+          "x-type": "jsm.create.incident",
+          "x-ui-name": "Create incident",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" },
+            "serviceDesk": { "type": "string" },
+            "requestType": { "type": ["string", "null"] },
+            "associateAlert": { "type": "boolean" },
+            "deduplicateIncident": { "type": "boolean" }
+          }
+        },
+        "ActionValue_createCmdbObject": {
+          "x-type": "cmdb.object.create",
+          "x-ui-name": "Create object (Assets/CMDB)",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "workspaceId": { "type": "string" },
+            "schemaLabel": { "type": "string" },
+            "schemaId": { "type": "string" },
+            "objectTypeLabel": { "type": "string" },
+            "objectTypeId": { "type": "string" },
+            "attributes": { "type": "array" }
+          }
+        },
+        "ActionValue_createRequest": {
+          "x-type": "jira.sd.create.request",
+          "x-ui-name": "Create with request type",
+          "x-schema-version": 10,
+          "type": "object",
+          "properties": {
+            "operations": { "$ref": "#/components/schemas/OperationsArray" },
+            "advancedFields": { "type": ["object", "null"] },
+            "sendNotifications": { "type": "boolean" },
+            "serviceDesk": { "type": "string" },
+            "requestType": { "type": "string" }
+          }
+        },
+        "ActionValue_editCmdbFieldAttributes": {
+          "x-type": "jira.cmdb.field.edit.attributes",
+          "x-ui-name": "Edit Assets field attributes",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "cmdbField": { "type": "string" },
+            "attributes": { "type": "array" }
+          }
+        },
+        "ActionValue_editCmdbObjectAttributes": {
+          "x-type": "cmdb.object.edit.attributes",
+          "x-ui-name": "Edit object attributes (CMDB)",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "attributes": { "type": "array" }
+          }
+        },
+        "ActionValue_editRequestType": {
+          "x-type": "jira.edit.request.type",
+          "x-ui-name": "Edit request type",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "requestType": { "$ref": "#/components/schemas/FieldReference" },
+            "sendNotifications": { "type": "boolean" }
+          }
+        },
+        "ActionValue_linkVulnerability": {
+          "x-type": "security.vulnerability.link",
+          "x-ui-name": "Link vulnerability",
+          "x-schema-version": 1,
+          "type": "object",
+          "properties": {
+            "issue": { "$ref": "#/components/schemas/FieldReference" }
+          }
+        }
+      }
+    }
+  ]
+}

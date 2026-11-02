@@ -1,0 +1,139 @@
+{
+  "actor": {
+    "actor": "5e315033461f120e6dac5c6f",
+    "type": "ACCOUNT_ID"
+  },
+  "canOtherRuleTrigger": false,
+  "collaborators": [],
+  "components": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "component": "ACTION",
+              "conditionParentId": null,
+              "conditions": [],
+              "connectionId": null,
+              "id": "8cdb3b08-7df2-497b-a8c2-63d60f21d26d",
+              "parentId": "e9b9010c-57ec-4135-8636-6f46e47c216f",
+              "schemaVersion": 2,
+              "type": "jira.issue.comment",
+              "value": {
+                "addCommentOnce": false,
+                "comment": "High-priority issue started — notifying the team.",
+                "commentVisibility": null,
+                "publicComment": false,
+                "sendNotifications": true
+              }
+            }
+          ],
+          "component": "CONDITION_BLOCK",
+          "conditionParentId": null,
+          "conditions": [
+            {
+              "children": [],
+              "component": "CONDITION",
+              "conditionParentId": "e9b9010c-57ec-4135-8636-6f46e47c216f",
+              "conditions": [],
+              "connectionId": null,
+              "id": "3c3d7806-eb0c-42bf-814a-7cd625bdff07",
+              "parentId": null,
+              "schemaVersion": 1,
+              "type": "jira.comparator.condition",
+              "value": {
+                "first": "{{issue.priority.name}}",
+                "operator": "EQUALS",
+                "second": "High"
+              }
+            }
+          ],
+          "connectionId": null,
+          "id": "e9b9010c-57ec-4135-8636-6f46e47c216f",
+          "parentId": "afdd3f54-c999-4987-b8b2-31eb6fc9dbee",
+          "schemaVersion": 1,
+          "type": "jira.condition.if.block",
+          "value": {
+            "conditionMatchType": "ALL"
+          }
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "component": "ACTION",
+              "conditionParentId": null,
+              "conditions": [],
+              "connectionId": null,
+              "id": "b7943d5a-9a72-497f-ad7c-9f30f056f206",
+              "parentId": "43a3cbfe-8783-47f1-a985-1c08a24ae9b8",
+              "schemaVersion": 1,
+              "type": "codebarrel.action.log",
+              "value": "Normal priority — no action needed."
+            }
+          ],
+          "component": "CONDITION_BLOCK",
+          "conditionParentId": null,
+          "conditions": [],
+          "connectionId": null,
+          "id": "43a3cbfe-8783-47f1-a985-1c08a24ae9b8",
+          "parentId": "afdd3f54-c999-4987-b8b2-31eb6fc9dbee",
+          "schemaVersion": 1,
+          "type": "jira.condition.if.block",
+          "value": {
+            "conditionMatchType": "ALL"
+          }
+        }
+      ],
+      "component": "CONDITION",
+      "conditionParentId": null,
+      "conditions": [],
+      "connectionId": null,
+      "id": "afdd3f54-c999-4987-b8b2-31eb6fc9dbee",
+      "parentId": null,
+      "schemaVersion": 1,
+      "type": "jira.condition.container.block",
+      "value": {}
+    }
+  ],
+  "description": null,
+  "labels": [
+    "managed-by:terraform"
+  ],
+  "name": "tf-acc-doc-condition",
+  "notifyOnError": "FIRSTERROR",
+  "ruleScopeARIs": [
+    "ari:cloud:jira:4e119cf2-4b83-4195-abdf-d7a2f9bd043d:project/10336"
+  ],
+  "state": "ENABLED",
+  "trigger": {
+    "component": "TRIGGER",
+    "conditions": [],
+    "connectionId": null,
+    "id": "95b820ed-7200-480b-8d47-9eb9ed2dd9c6",
+    "schemaVersion": 1,
+    "type": "jira.issue.event.trigger:transitioned",
+    "value": {
+      "eventFilters": [
+        "ari:cloud:jira:4e119cf2-4b83-4195-abdf-d7a2f9bd043d:project/10336"
+      ],
+      "eventKey": "jira:issue_updated",
+      "fromStatus": [
+        {
+          "type": "NAME",
+          "value": "To Do"
+        }
+      ],
+      "issueEvent": "issue_generic",
+      "toStatus": [
+        {
+          "type": "NAME",
+          "value": "In Progress"
+        }
+      ]
+    }
+  },
+  "uuid": "019c88ef-b381-7574-8a20-b5e4e803d76b",
+  "writeAccessType": "OWNER_ONLY"
+}
