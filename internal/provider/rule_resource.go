@@ -55,11 +55,11 @@ func (r *ruleResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 func (r *ruleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Jira Automation rule. Note: the public API has no DELETE endpoint, so terraform destroy will disable the rule instead of deleting it.",
+		Description: "Manages a Jira Cloud or Jira Server/Data Center Automation rule. Destroy disables Cloud rules and deletes Data Center rules.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "Rule UUID.",
+				Description: "Rule identifier (Cloud UUID or Data Center numeric ID).",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -84,7 +84,7 @@ func (r *ruleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"scope": schema.ListAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
-				Description: "Rule scope ARIs assigned by the API.",
+				Description: "Rule scope assigned by the API (Cloud ARIs or Data Center project identifiers).",
 				PlanModifiers: []planmodifier.List{
 					listplanmodifier.UseStateForUnknown(),
 				},
@@ -92,14 +92,14 @@ func (r *ruleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"labels": schema.ListAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
-				Description: "Rule labels (read-only). The provider auto-tags rules with managed-by:terraform but labels cannot be set via config. Use the Jira UI to manage labels.",
+				Description: "Rule labels (read-only). Jira Cloud rules are tagged with managed-by:terraform when the label exists.",
 				PlanModifiers: []planmodifier.List{
 					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"project_id": schema.StringAttribute{
 				Optional:    true,
-				Description: "Jira project numeric ID. Used to scope event-based triggers to a project.",
+				Description: "Jira project numeric ID. For Data Center, must match the provider project_id; used to scope the rule and event trigger.",
 			},
 			"trigger": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -222,20 +222,18 @@ func (r *ruleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	createReq := client.CreateRuleRequest{
 		Name:       plan.Name.ValueString(),
 		ProjectID:  plan.ProjectID.ValueString(),
+		Enabled:    plan.Enabled.ValueBool(),
 		Trigger:    trigger,
 		Components: components,
+	}
+	if r.client.IsDataCenter && createReq.ProjectID != "" && createReq.ProjectID != r.client.ProjectID {
+		resp.Diagnostics.AddError("Invalid project_id", fmt.Sprintf("resource project_id %q must match provider project_id %q for Jira Data Center", createReq.ProjectID, r.client.ProjectID))
+		return
 	}
 
 	uuid, err := r.client.CreateRule(createReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating rule", err.Error())
-		return
-	}
-
-	// Set the rule state after creation if needed.
-	enabled := plan.Enabled.ValueBool()
-	if err := r.client.SetRuleState(uuid, enabled); err != nil {
-		resp.Diagnostics.AddError("Error setting rule state after creation", err.Error())
 		return
 	}
 
@@ -304,6 +302,7 @@ func (r *ruleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	updateReq := client.UpdateRuleRequest{
 		Name:       plan.Name.ValueString(),
+		Enabled:    plan.Enabled.ValueBool(),
 		Trigger:    trigger,
 		Components: components,
 	}
@@ -313,11 +312,13 @@ func (r *ruleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// Handle enabled state change.
-	enabled := plan.Enabled.ValueBool()
-	if err := r.client.SetRuleState(uuid, enabled); err != nil {
-		resp.Diagnostics.AddError("Error setting rule state", err.Error())
-		return
+	if !r.client.IsDataCenter {
+		// Cloud exposes state changes via its dedicated state endpoint.
+		enabled := plan.Enabled.ValueBool()
+		if err := r.client.SetRuleState(uuid, enabled); err != nil {
+			resp.Diagnostics.AddError("Error setting rule state", err.Error())
+			return
+		}
 	}
 
 	// Read back the updated rule.
@@ -340,18 +341,24 @@ func (r *ruleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *ruleResource) Delete(_ context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ruleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state ruleResourceModel
-	resp.Diagnostics.Append(req.State.Get(context.Background(), &state)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// No DELETE endpoint in the public API — disable the rule instead.
 	uuid := state.ID.ValueString()
+	if r.client.IsDataCenter {
+		if err := r.client.DeleteRule(uuid); err != nil {
+			resp.Diagnostics.AddError("Error deleting Jira Data Center rule", err.Error())
+		}
+		return
+	}
+	// Jira Cloud's public API has no DELETE endpoint, so disable the rule instead.
 	if err := r.client.SetRuleState(uuid, false); err != nil {
 		resp.Diagnostics.AddError("Error disabling rule on destroy",
-			fmt.Sprintf("The Jira Automation API has no DELETE endpoint. Attempted to disable rule %s instead, but got error: %s", uuid, err.Error()))
+			fmt.Sprintf("The Jira Cloud Automation API has no DELETE endpoint. Attempted to disable rule %s instead, but got error: %s", uuid, err.Error()))
 		return
 	}
 
@@ -389,7 +396,8 @@ func (r *ruleResource) readIntoModel(ctx context.Context, uuid string, model *ru
 
 	// Scope
 	if len(rule.RuleScopeARIs) > 0 {
-		scopeList, d := types.ListValueFrom(ctx, types.StringType, rule.RuleScopeARIs)
+		scopeValues := rule.RuleScopeARIs
+		scopeList, d := types.ListValueFrom(ctx, types.StringType, scopeValues)
 		diags.Append(d...)
 		model.Scope = scopeList
 	} else {
@@ -466,7 +474,17 @@ func (r *ruleResource) resolveTriggerJSON(ctx context.Context, model *ruleResour
 		}
 
 		projectID := model.ProjectID.ValueString()
-		raw, err := BuildTriggerJSON(triggerType, args, r.client.CloudID, projectID)
+		if projectID == "" && r.client.IsDataCenter {
+			projectID = r.client.ProjectID
+		}
+		jiraID := r.client.CloudID
+		if r.client.IsDataCenter {
+			jiraID = ""
+			if projectID == "" {
+				projectID = r.client.ProjectID
+			}
+		}
+		raw, err := BuildTriggerJSON(triggerType, args, jiraID, projectID)
 		if err != nil {
 			diags.AddError("Error building trigger JSON", err.Error())
 			return nil, diags
@@ -474,7 +492,29 @@ func (r *ruleResource) resolveTriggerJSON(ctx context.Context, model *ruleResour
 		return raw, diags
 	}
 
-	return json.RawMessage(model.TriggerJSON.ValueString()), diags
+	raw := json.RawMessage(model.TriggerJSON.ValueString())
+	if r.client.IsDataCenter {
+		var trigger map[string]interface{}
+		if err := json.Unmarshal(raw, &trigger); err != nil {
+			diags.AddError("Invalid trigger_json", err.Error())
+			return nil, diags
+		}
+		if trigger["type"] == "jira.issue.event.trigger:transitioned" {
+			value, ok := trigger["value"].(map[string]interface{})
+			if !ok {
+				value = map[string]interface{}{}
+				trigger["value"] = value
+			}
+			value["eventFilters"] = []string{fmt.Sprintf("ari:cloud:jira::project/%s", r.client.ProjectID)}
+			encoded, err := json.Marshal(trigger)
+			if err != nil {
+				diags.AddError("Invalid trigger_json", err.Error())
+				return nil, diags
+			}
+			raw = encoded
+		}
+	}
+	return raw, diags
 }
 
 // resolveComponentsJSON returns the components JSON from either the structured
@@ -483,7 +523,11 @@ func (r *ruleResource) resolveComponentsJSON(ctx context.Context, model *ruleRes
 	var diags diag.Diagnostics
 
 	if model.Components != nil {
-		raws, err := BuildComponentsJSON(model.Components, r.client.CloudID, r.client.WebhookUser, r.client.WebhookToken, ctx, r.client.FieldAliases)
+		jiraID := r.client.CloudID
+		if r.client.IsDataCenter {
+			jiraID = r.client.SiteURL
+		}
+		raws, err := BuildComponentsJSON(model.Components, jiraID, r.client.WebhookUser, r.client.WebhookToken, ctx, r.client.FieldAliases)
 		if err != nil {
 			diags.AddError("Error building components JSON", err.Error())
 			return nil, diags
@@ -597,6 +641,9 @@ func toStringSlice(ctx context.Context, list types.List) []string {
 // syncManagedLabel tags the rule with managed-by:terraform via the internal API.
 // Warns instead of failing if the label doesn't exist — the user must create it in the Jira UI.
 func (r *ruleResource) syncManagedLabel(ctx context.Context, uuid string, model ruleResourceModel, diags *diag.Diagnostics) {
+	if r.client.IsDataCenter {
+		return
+	}
 	scopes := toStringSlice(ctx, model.Scope)
 	if len(scopes) != 1 {
 		return // Global or multi-project — skip.

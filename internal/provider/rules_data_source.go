@@ -47,7 +47,7 @@ func (d *rulesDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 					Attributes: map[string]schema.Attribute{
 						"uuid": schema.StringAttribute{
 							Computed:    true,
-							Description: "Rule UUID.",
+							Description: "Identifier returned in this field: Cloud UUID or numeric Data Center rule ID.",
 						},
 						"name": schema.StringAttribute{
 							Computed:    true,

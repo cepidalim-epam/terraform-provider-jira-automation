@@ -18,7 +18,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/cepicdalim-epam/terraform-provider-jira-automation",
+		Address: "registry.terraform.io/cepidalim-epam/jira-automation",
 		Debug:   debug,
 	}
 

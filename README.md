@@ -72,25 +72,26 @@ resource "jira-automation_rule" "cond" {
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) 1.5+ (required for `import` blocks and config generation)
-- A Jira Cloud site with an [API token](https://id.atlassian.com/manage-profile/security/api-tokens)
+- A Jira Cloud site or Jira Server/Data Center instance, plus credentials with permission to manage Automation rules
 
-> **Label setup:** Create a label named `managed-by:terraform` in the Jira Automation UI
-> (Project Settings → Automation → Labels) before using this provider. The provider will
-> tag all managed rules with this label so you can filter Terraform-managed rules.
+> **Cloud label setup:** Jira Cloud users can create a label named `managed-by:terraform`
+> in the Automation UI before using this provider. The provider will tag Cloud managed
+> rules with this label so they can be filtered in Jira.
 
 ## Setup
 
 ### 1. Set environment variables
 
-The provider needs three values. You can pass them via environment variables
+The provider needs a Jira URL, username, and PAT. Jira Data Center also needs a numeric project ID for Automation rule operations. You can pass them via environment variables
 so they don't need to be hardcoded in `.tf` files.
 
 Create a `.env` file in the directory where your `.tf` files live (e.g. `beno/.env`):
 
 ```bash
-export ATLASSIAN_SITE_URL=https://yoursite.atlassian.net
-export ATLASSIAN_USER=you@example.com
-export ATLASSIAN_TOKEN=your-api-token
+export jira_url=https://jira.example.com
+export jira_username=your-username
+export jira_pat_rw=your-personal-access-token
+export jira_id=80647
 ```
 
 Then **before running any `terraform` command**, load them into your shell:
@@ -103,9 +104,10 @@ The full list of supported env vars:
 
 | What | Env vars (checked in order) |
 |------|-----------------------------|
-| Site URL | `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL` |
-| Email | `JIRA_EMAIL`, `ATLASSIAN_USER` |
-| API Token | `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN` |
+| Jira URL | `jira_url`, `JIRA_URL`, `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL` |
+| Username | `jira_username`, `JIRA_USERNAME`, `JIRA_EMAIL`, `ATLASSIAN_USER` |
+| PAT | `jira_pat_rw`, `JIRA_PAT_RW`, `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN` |
+| Project ID | `jira_id`, `JIRA_ID`, `JIRA_TEST_PROJECT_ID` (required for Data Center) |
 
 ### 2. Write your Terraform config
 
@@ -123,13 +125,13 @@ Create a directory for your project (e.g. `my-jira/`) and add a file called `mai
 terraform {
   required_providers {
     jira-automation = {
-      source = "registry.terraform.io/cepicdalim-epam/terraform-provider-jira-automation"
+      source = "registry.terraform.io/cepidalim-epam/jira-automation"
     }
   }
 }
 
-# This block is always required. When all three values come from env vars,
-# it can be empty like this:
+# This block is always required. If the values required for your Jira deployment
+# come from env vars, it can be empty like this:
 provider "jira-automation" {}
 ```
 
@@ -138,9 +140,10 @@ don't want to deal with env vars):
 
 ```hcl
 provider "jira-automation" {
-  site_url  = "https://yoursite.atlassian.net"
-  email     = "you@example.com"
-  api_token = "your-api-token"   # sensitive — prefer env vars
+  site_url   = "https://jira.example.com"
+  email      = "your-username"
+  api_token  = "your-personal-access-token" # sensitive — prefer env vars
+  project_id = "80647" # Jira Server/Data Center only
 }
 ```
 
@@ -159,11 +162,12 @@ terraform apply          # execute it
 
 | Attribute   | Type   | In HCL | Env Var Fallback |
 |-------------|--------|--------|------------------|
-| `site_url`  | string | optional | `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL` |
-| `email`     | string | optional | `JIRA_EMAIL`, `ATLASSIAN_USER` |
-| `api_token` | string | optional | `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN` |
+| `site_url`  | string | optional | `jira_url`, `JIRA_URL`, `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL` |
+| `email`     | string | optional | `jira_username`, `JIRA_USERNAME`, `JIRA_EMAIL`, `ATLASSIAN_USER` |
+| `api_token` | string | optional | `jira_pat_rw`, `JIRA_PAT_RW`, `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN` |
+| `project_id` | string | optional | `jira_id`, `JIRA_ID`, `JIRA_TEST_PROJECT_ID` |
 
-All three must be provided — either in the provider block, via env vars, or a combination.
+The URL, username, and PAT are required. For Data Center, set the numeric project ID in provider config or environment; this determines the project scope and rule API route.
 The `provider "jira-automation" {}` block itself is always required by Terraform, even if empty.
 
 ## Resources
@@ -202,12 +206,12 @@ resource "jira-automation_rule" "example" {
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | computed | Rule UUID (set on create/import) |
+| `id` | string | computed | Rule identifier (Cloud UUID or Data Center numeric ID) |
 | `name` | string | required | Rule name |
 | `enabled` | bool | optional | Enable/disable (default: `true`) |
 | `state` | string | computed | `ENABLED` or `DISABLED` |
-| `scope` | list(string) | computed | Scope ARIs assigned by the API |
-| `labels` | list(string) | computed | Rule labels (read-only). Auto-tagged with `managed-by:terraform`. |
+| `scope` | list(string) | computed | Rule scope assigned by the API |
+| `labels` | list(string) | computed | Rule labels (read-only). Jira Cloud rules may be auto-tagged with `managed-by:terraform`. Jira Data Center numeric label IDs are converted to strings. |
 | `trigger_json` | string (JSON) | required | Trigger config — use `jsonencode()` |
 | `components_json` | string (JSON) | required | Actions/conditions array — use `jsonencode()` |
 
@@ -231,10 +235,10 @@ Structured `component` block types that replace raw JSON with simple HCL argumen
 
 To bring a pre-existing Jira Automation rule under Terraform management:
 
-**1. Find the rule UUID.** Open the rule in Jira — the URL contains the ID after `#/rule/`:
+**1. Find the rule ID.** Open the rule in Jira — the URL contains a Cloud UUID or Data Center numeric ID after `#/rule/`:
 
 ```
-https://yoursite.atlassian.net/jira/settings/automate#/rule/<rule-uuid>
+https://jira.example.com/jira/settings/automate#/rule/<rule-id>
 ```
 
 **2. Create `imports.tf`.** In your project directory (next to `main.tf`), create a file called `imports.tf`:
@@ -242,7 +246,7 @@ https://yoursite.atlassian.net/jira/settings/automate#/rule/<rule-uuid>
 ```hcl
 import {
   to = jira-automation_rule.my_rule
-  id = "01997721-1866-7233-9bb8-cec4a4614919"
+  id = "01997721-1866-7233-9bb8-cec4a4614919" # Cloud UUID or Data Center numeric ID
 }
 ```
 
@@ -281,7 +285,7 @@ terraform plan
 
 #### Destroy behavior
 
-The Jira Automation API has **no DELETE endpoint**. Running `terraform destroy` will **disable** the rule instead of deleting it. A warning is shown when this happens.
+Jira Cloud's Automation API has **no DELETE endpoint**, so `terraform destroy` disables Cloud rules. Jira Data Center rules are deleted.
 
 ## Data Sources
 
@@ -344,10 +348,10 @@ TF_ACC=1 go test ./internal/provider/ -v -run TestAccRuleResource_basic -timeout
 | Variable | Required by |
 |----------|-------------|
 | `TF_ACC=1` | All acceptance tests (framework gate) |
-| `JIRA_SITE_URL` (or `ATLASSIAN_SITE_URL`) | All acceptance tests |
-| `JIRA_EMAIL` (or `ATLASSIAN_USER`) | All acceptance tests |
-| `JIRA_API_TOKEN` (or `ATLASSIAN_TOKEN`) | All acceptance tests |
-| `JIRA_TEST_PROJECT_ID` | Tests with project-scoped triggers |
+| `jira_url` (or `JIRA_URL`, `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL`) | All acceptance tests |
+| `jira_username` (or `JIRA_USERNAME`, `JIRA_EMAIL`, `ATLASSIAN_USER`) | All acceptance tests |
+| `jira_pat_rw` (or `JIRA_PAT_RW`, `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN`) | All acceptance tests |
+| `jira_id` (or `JIRA_ID`, `JIRA_TEST_PROJECT_ID`) | Tests with project-scoped triggers and all Data Center tests |
 | `JIRA_WEBHOOK_USER` | `add_release_related_work` tests |
 | `JIRA_WEBHOOK_TOKEN` | `add_release_related_work` tests |
 
@@ -366,7 +370,7 @@ CI runs unit tests on all pushes and PRs. Acceptance tests run on pushes to `mai
 
 #### Cleanup
 
-Acceptance test rules accumulate as disabled rules (the API has no DELETE endpoint). Periodically clean via Jira UI by filtering on the `tf-acc-test` label.
+Cloud acceptance test rules accumulate as disabled rules (the Cloud API has no DELETE endpoint). Data Center test rules are deleted on destroy. Periodically clean Cloud rules via Jira UI by filtering on the `tf-acc-test` label.
 
 ## Troubleshooting
 

@@ -13,11 +13,10 @@ import (
 	"terraform-provider-jira-automation/internal/client"
 )
 
-// extractUUIDFromURL extracts a rule UUID from a Jira Automation URL.
-// Expects a fragment like #/rule/<uuid> at the end.
-var ruleURLPattern = regexp.MustCompile(`#/rule/([0-9a-f-]+)`)
+// extractRuleIDFromURL extracts a Cloud UUID or Data Center numeric ID from a Jira Automation URL.
+var ruleURLPattern = regexp.MustCompile(`#/rule/([0-9a-f-]+|[0-9]+)`)
 
-func extractUUIDFromURL(url string) string {
+func extractRuleIDFromURL(url string) string {
 	m := ruleURLPattern.FindStringSubmatch(url)
 	if len(m) == 2 {
 		return m[1]
@@ -46,15 +45,15 @@ func main() {
 		case strings.HasPrefix(args[i], "--id="):
 			ruleID = strings.TrimPrefix(args[i], "--id=")
 		case (args[i] == "--url") && i+1 < len(args):
-			ruleID = extractUUIDFromURL(args[i+1])
+			ruleID = extractRuleIDFromURL(args[i+1])
 			if ruleID == "" {
-				log.Fatalf("Could not extract rule UUID from URL: %s", args[i+1])
+				log.Fatalf("Could not extract rule ID from URL: %s", args[i+1])
 			}
 			i++
 		case strings.HasPrefix(args[i], "--url="):
-			ruleID = extractUUIDFromURL(strings.TrimPrefix(args[i], "--url="))
+			ruleID = extractRuleIDFromURL(strings.TrimPrefix(args[i], "--url="))
 			if ruleID == "" {
-				log.Fatalf("Could not extract rule UUID from URL: %s", args[i])
+				log.Fatalf("Could not extract rule ID from URL: %s", args[i])
 			}
 		default:
 			positional = append(positional, args[i])
@@ -64,17 +63,25 @@ func main() {
 		outDir = positional[0]
 	}
 
-	siteURL := envFirst("JIRA_SITE_URL", "ATLASSIAN_SITE_URL")
-	email := envFirst("JIRA_EMAIL", "ATLASSIAN_USER")
-	apiToken := envFirst("JIRA_API_TOKEN", "ATLASSIAN_TOKEN")
+	siteURL := envFirst("jira_url", "JIRA_URL", "JIRA_SITE_URL", "ATLASSIAN_SITE_URL")
+	email := envFirst("jira_username", "JIRA_USERNAME", "JIRA_EMAIL", "ATLASSIAN_USER")
+	apiToken := envFirst("jira_pat_rw", "JIRA_PAT_RW", "JIRA_API_TOKEN", "ATLASSIAN_TOKEN")
 
 	if siteURL == "" || email == "" || apiToken == "" {
-		log.Fatal("Set ATLASSIAN_SITE_URL, ATLASSIAN_USER, and ATLASSIAN_TOKEN (or JIRA_* equivalents)")
+		log.Fatal("Set jira_url, jira_username, and jira_pat_rw (or JIRA_* equivalents)")
 	}
 
 	c, err := client.New(siteURL, email, apiToken, "", "", nil)
 	if err != nil {
 		log.Fatalf("creating client: %v", err)
+	}
+	c.ProjectID = envFirst("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID")
+	if c.IsDataCenter {
+		projectID, err := client.ParseProjectID(c.ProjectID)
+		if err != nil {
+			log.Fatalf("Set jira_id (numeric Jira project ID) for Jira Data Center imports: %v", err)
+		}
+		c.ProjectID = projectID
 	}
 
 	// Single-rule mode: --id or --url.
@@ -229,6 +236,9 @@ func generateHCL(resName string, rule *client.Rule) string {
 	fmt.Fprintf(&b, "resource \"jira-automation_rule\" %q {\n", resName)
 	fmt.Fprintf(&b, "  name    = %q\n", rule.Name)
 	fmt.Fprintf(&b, "  enabled = %v\n", enabled)
+	if ruleScopeProjectID := client.ExtractProjectID(firstScope(rule.RuleScopeARIs)); ruleScopeProjectID != "" {
+		fmt.Fprintf(&b, "  project_id = %q\n", ruleScopeProjectID)
+	}
 
 	// scope is computed-only (assigned by the API), not emitted.
 	// labels are managed via internal API, not emitted.
@@ -243,6 +253,13 @@ func generateHCL(resName string, rule *client.Rule) string {
 
 	fmt.Fprintf(&b, "}\n")
 	return b.String()
+}
+
+func firstScope(scopes []string) string {
+	if len(scopes) == 0 {
+		return ""
+	}
+	return scopes[0]
 }
 
 func parseAndStrip(raw json.RawMessage) interface{} {

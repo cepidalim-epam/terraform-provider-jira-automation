@@ -159,14 +159,14 @@ One of `trigger` or `trigger_json` is required; one of `components` or `componen
 
 ### Read-Only
 
-- `id` (String) - Rule UUID, set on create or import.
+- `id` (String) - Rule identifier (Cloud UUID or Data Center numeric ID), set on create or import.
 - `state` (String) - `ENABLED` or `DISABLED`.
-- `scope` (List of String) - Scope ARIs assigned by the API.
-- `labels` (List of String) - Rule labels. The provider auto-tags rules with `managed-by:terraform`.
+- `scope` (List of String) - Rule scope assigned by the API.
+- `labels` (List of String) - Rule labels (read-only). Jira Cloud rules may be auto-tagged with `managed-by:terraform`. Jira Data Center numeric label IDs are converted to strings.
 
 ## Import
 
-Import existing rules using an `import` block with the rule UUID:
+Import existing rules using an `import` block with the rule UUID (Cloud) or numeric ID (Data Center):
 
 ```hcl
 import {
@@ -181,6 +181,6 @@ Then generate the resource configuration:
 terraform plan -generate-config-out=generated.tf
 ```
 
-~> **Labels:** The provider automatically tags managed rules with `managed-by:terraform`. You must create this label in the Jira UI first (Project Settings → Automation → Labels). Labels cannot be set via Terraform config — use the Jira UI to manage labels.
+~> **Cloud labels:** The provider attempts to tag managed rules with `managed-by:terraform`. You must create this label in the Jira UI first. Labels cannot be set via Terraform config.
 
-~> The Jira Automation API has no DELETE endpoint. Running `terraform destroy` will **disable** the rule instead of deleting it.
+~> **Destroy behavior:** Jira Cloud rules are disabled because the Cloud API has no DELETE endpoint. Jira Data Center rules are deleted.

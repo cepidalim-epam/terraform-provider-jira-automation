@@ -34,6 +34,6 @@ lint-env:
 	@if [ -f .env ]; then dotenv-linter check --schema .env.schema --ignore-checks UnorderedKey .env && dotenv-linter diff .env.example .env; fi
 
 dev.tfrc: build
-	@printf 'provider_installation {\n  dev_overrides {\n    "registry.terraform.io/cepicdalim-epam/terraform-provider-jira-automation" = "%s"\n  }\n  direct {}\n}\n' "$(CURDIR)" > dev.tfrc
+	@printf 'provider_installation {\n  dev_overrides {\n    "registry.terraform.io/cepidalim-epam/jira-automation" = "%s"\n  }\n  direct {}\n}\n' "$(CURDIR)" > dev.tfrc
 
 .PHONY: build install test testacc generate docs golden lint-env

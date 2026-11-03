@@ -77,13 +77,14 @@ func ParseTrigger(raw json.RawMessage) (triggerType string, args map[string]stri
 
 // --- status_transition ---
 
-func buildStatusTransition(args map[string]string, cloudID, projectID string) (json.RawMessage, error) {
+func buildStatusTransition(args map[string]string, jiraID, projectID string) (json.RawMessage, error) {
 	fromStatus := args["from_status"]
 	toStatus := args["to_status"]
 	if fromStatus == "" || toStatus == "" {
 		return nil, fmt.Errorf("status_transition requires from_status and to_status args")
 	}
 
+	eventFilter := fmt.Sprintf("ari:cloud:jira:%s:project/%s", jiraID, projectID)
 	trigger := map[string]interface{}{
 		"component":     "TRIGGER",
 		"conditions":    []interface{}{},
@@ -92,7 +93,7 @@ func buildStatusTransition(args map[string]string, cloudID, projectID string) (j
 		"type":          "jira.issue.event.trigger:transitioned",
 		"value": map[string]interface{}{
 			"eventFilters": []string{
-				fmt.Sprintf("ari:cloud:jira:%s:project/%s", cloudID, projectID),
+				eventFilter,
 			},
 			"eventKey":   "jira:issue_updated",
 			"issueEvent": "issue_generic",

@@ -37,10 +37,10 @@ TF_ACC=1 go test ./internal/provider/ -v -run TestAccRuleResource_basic -timeout
 | Variable | Required by |
 |----------|-------------|
 | `TF_ACC=1` | All acceptance tests (framework gate) |
-| `JIRA_SITE_URL` (or `ATLASSIAN_SITE_URL`) | All acceptance tests |
-| `JIRA_EMAIL` (or `ATLASSIAN_USER`) | All acceptance tests |
-| `JIRA_API_TOKEN` (or `ATLASSIAN_TOKEN`) | All acceptance tests |
-| `JIRA_TEST_PROJECT_ID` | Tests with project-scoped triggers |
+| `jira_url` (or `JIRA_URL`, `JIRA_SITE_URL`, `ATLASSIAN_SITE_URL`) | All acceptance tests |
+| `jira_username` (or `JIRA_USERNAME`, `JIRA_EMAIL`, `ATLASSIAN_USER`) | All acceptance tests |
+| `jira_pat_rw` (or `JIRA_PAT_RW`, `JIRA_API_TOKEN`, `ATLASSIAN_TOKEN`) | All acceptance tests |
+| `jira_id` (or `JIRA_ID`, `JIRA_TEST_PROJECT_ID`) | All Jira Data Center tests and project-scoped triggers |
 | `JIRA_WEBHOOK_USER` | `add_release_related_work` tests |
 | `JIRA_WEBHOOK_TOKEN` | `add_release_related_work` tests |
 
@@ -52,7 +52,7 @@ TF_ACC=1 go test ./internal/provider/ -v -run TestAccRuleResource_basic -timeout
 
 ### Cleanup
 
-Acceptance test rules accumulate as disabled rules (the API has no DELETE endpoint). Periodically clean via Jira UI by filtering on the `tf-acc-test` label.
+Jira Cloud acceptance test rules accumulate as disabled rules (the Cloud public API has no DELETE endpoint). Jira Data Center rules are deleted on destroy. Periodically clean Cloud rules via Jira UI by filtering on the `tf-acc-test` label.
 
 ## Dev Override
 
@@ -73,7 +73,7 @@ Regenerates all `rule_*.tf` files in a target directory from the live Jira Autom
 go build -o import-gen ./cmd/import-gen && ./import-gen ../beno
 ```
 
-Requires `ATLASSIAN_SITE_URL`, `ATLASSIAN_USER`, `ATLASSIAN_TOKEN` env vars.
+Requires `jira_url` (or `JIRA_URL` / `JIRA_SITE_URL` / `ATLASSIAN_SITE_URL`), `jira_username` (or `JIRA_USERNAME` / `JIRA_EMAIL` / `ATLASSIAN_USER`), and `jira_pat_rw` (or `JIRA_PAT_RW` / `JIRA_API_TOKEN` / `ATLASSIAN_TOKEN`) env vars. Jira Data Center also requires `jira_id` / `JIRA_ID` / `JIRA_TEST_PROJECT_ID`.
 
 ## Doc Examples & Golden Files
 

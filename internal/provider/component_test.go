@@ -317,6 +317,17 @@ func TestParseAddReleaseRelatedWork_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestParseAddReleaseRelatedWork_DataCenterURL(t *testing.T) {
+	raw := json.RawMessage(`{"value":{"url":"https://jira.example.com/rest/api/2/version/{{issue.customfield_10020.format(\"###\")}}/relatedwork","customBody":"{\"category\":\"other\",\"title\":\"Deploy\",\"url\":\"https://example.com\"}"}}`)
+	parsed, err := parseAddReleaseRelatedWork(raw)
+	if err != nil {
+		t.Fatalf("parseAddReleaseRelatedWork() error = %v", err)
+	}
+	if parsed["version_field"] != "customfield_10020" {
+		t.Errorf("version_field = %q", parsed["version_field"])
+	}
+}
+
 func TestBuildDebugLogs(t *testing.T) {
 	args := map[string]string{
 		"version_field": "customfield_10709",

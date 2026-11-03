@@ -22,28 +22,19 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 func testAccPreCheck(t *testing.T) {
 	t.Helper()
 
-	siteURL := os.Getenv("JIRA_SITE_URL")
+	siteURL := firstEnv("jira_url", "JIRA_URL", "JIRA_SITE_URL", "ATLASSIAN_SITE_URL")
 	if siteURL == "" {
-		siteURL = os.Getenv("ATLASSIAN_SITE_URL")
-	}
-	if siteURL == "" {
-		t.Fatal("JIRA_SITE_URL or ATLASSIAN_SITE_URL must be set for acceptance tests")
+		t.Fatal("jira_url, JIRA_URL, JIRA_SITE_URL, or ATLASSIAN_SITE_URL must be set for acceptance tests")
 	}
 
-	email := os.Getenv("JIRA_EMAIL")
+	email := firstEnv("jira_username", "JIRA_USERNAME", "JIRA_EMAIL", "ATLASSIAN_USER")
 	if email == "" {
-		email = os.Getenv("ATLASSIAN_USER")
-	}
-	if email == "" {
-		t.Fatal("JIRA_EMAIL or ATLASSIAN_USER must be set for acceptance tests")
+		t.Fatal("jira_username, JIRA_USERNAME, JIRA_EMAIL, or ATLASSIAN_USER must be set for acceptance tests")
 	}
 
-	token := os.Getenv("JIRA_API_TOKEN")
+	token := firstEnv("jira_pat_rw", "JIRA_PAT_RW", "JIRA_API_TOKEN", "ATLASSIAN_TOKEN")
 	if token == "" {
-		token = os.Getenv("ATLASSIAN_TOKEN")
-	}
-	if token == "" {
-		t.Fatal("JIRA_API_TOKEN or ATLASSIAN_TOKEN must be set for acceptance tests")
+		t.Fatal("jira_pat_rw, JIRA_PAT_RW, JIRA_API_TOKEN, or ATLASSIAN_TOKEN must be set for acceptance tests")
 	}
 }
 
@@ -65,28 +56,33 @@ func testAccPreCheckWithProjectID(t *testing.T) {
 	t.Helper()
 	testAccPreCheck(t)
 
-	if os.Getenv("JIRA_TEST_PROJECT_ID") == "" {
-		t.Fatal("JIRA_TEST_PROJECT_ID must be set for project-scoped acceptance tests")
+	if firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID") == "" {
+		t.Fatal("jira_id, JIRA_ID, or JIRA_TEST_PROJECT_ID must be set for project-scoped acceptance tests")
 	}
 }
 
 // testAccNewClient creates a throwaway API client for CheckDestroy and other
 // out-of-band verification during acceptance tests.
 func testAccNewClient() (*client.Client, error) {
-	siteURL := os.Getenv("JIRA_SITE_URL")
-	if siteURL == "" {
-		siteURL = os.Getenv("ATLASSIAN_SITE_URL")
-	}
-	email := os.Getenv("JIRA_EMAIL")
-	if email == "" {
-		email = os.Getenv("ATLASSIAN_USER")
-	}
-	token := os.Getenv("JIRA_API_TOKEN")
-	if token == "" {
-		token = os.Getenv("ATLASSIAN_TOKEN")
-	}
+	siteURL := firstEnv("jira_url", "JIRA_URL", "JIRA_SITE_URL", "ATLASSIAN_SITE_URL")
+	email := firstEnv("jira_username", "JIRA_USERNAME", "JIRA_EMAIL", "ATLASSIAN_USER")
+	token := firstEnv("jira_pat_rw", "JIRA_PAT_RW", "JIRA_API_TOKEN", "ATLASSIAN_TOKEN")
 	webhookUser := os.Getenv("JIRA_WEBHOOK_USER")
 	webhookToken := os.Getenv("JIRA_WEBHOOK_TOKEN")
 
-	return client.New(siteURL, email, token, webhookUser, webhookToken, nil)
+	c, err := client.New(siteURL, email, token, webhookUser, webhookToken, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.ProjectID = firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID")
+	return c, nil
+}
+
+func firstEnv(names ...string) string {
+	for _, name := range names {
+		if value := os.Getenv(name); value != "" {
+			return value
+		}
+	}
+	return ""
 }

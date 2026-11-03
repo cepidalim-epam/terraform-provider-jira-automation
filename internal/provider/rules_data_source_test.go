@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -49,5 +48,5 @@ resource "jira-automation_rule" "dep" {
 data "jira-automation_rules" "all" {
   depends_on = [jira-automation_rule.dep]
 }
-`, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }

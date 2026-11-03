@@ -14,7 +14,7 @@ The Jira Automation provider lets you manage [Jira Automation](https://www.atlas
 terraform {
   required_providers {
     jira-automation = {
-      source = "registry.terraform.io/cepicdalim-epam/terraform-provider-jira-automation"
+      source = "registry.terraform.io/cepidalim-epam/jira-automation"
     }
   }
 }
@@ -22,14 +22,15 @@ terraform {
 provider "jira-automation" {}
 ```
 
-When all three required values come from environment variables, the provider block can be empty.
+When the required values come from environment variables, the provider block can be empty.
 You can also set values directly:
 
 ```hcl
 provider "jira-automation" {
-  site_url  = "https://yoursite.atlassian.net"
-  email     = "you@example.com"
-  api_token = "your-api-token"
+  site_url   = "https://jira.example.com"
+  email      = "your-username"
+  api_token  = "your-personal-access-token"
+  project_id = "80647"
 }
 ```
 
@@ -37,13 +38,13 @@ Any attribute set in the block takes priority over environment variables.
 
 ## Authentication
 
-The provider authenticates using [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
-Create a `.env` file with `export` prefixes and `source` it before running Terraform:
+The provider supports Jira Cloud and Jira Server/Data Center. For a dedicated instance, use a Jira username and PAT, and set a numeric project ID for Automation rule operations. Create a `.env` file with `export` prefixes and `source` it before running Terraform:
 
 ```bash
-export ATLASSIAN_SITE_URL=https://yoursite.atlassian.net
-export ATLASSIAN_USER=you@example.com
-export ATLASSIAN_TOKEN=your-api-token
+export jira_url=https://jira.example.com
+export jira_username=your-username
+export jira_pat_rw=your-personal-access-token
+export jira_id=80647
 ```
 
 ```bash
@@ -55,11 +56,12 @@ terraform plan
 
 ### Optional
 
-- `site_url` (String) - The Jira site URL (e.g. `https://yoursite.atlassian.net`). Can also be set via `JIRA_SITE_URL` or `ATLASSIAN_SITE_URL` env var.
-- `email` (String) - The email for Jira API authentication. Can also be set via `JIRA_EMAIL` or `ATLASSIAN_USER` env var.
-- `api_token` (String, Sensitive) - The API token for Jira authentication. Can also be set via `JIRA_API_TOKEN` or `ATLASSIAN_TOKEN` env var.
+- `site_url` (String) - The Jira site URL. Can also be set via `jira_url`, `JIRA_URL`, or legacy `JIRA_SITE_URL` / `ATLASSIAN_SITE_URL` env vars.
+- `email` (String) - The Jira username for API authentication. Can also be set via `jira_username`, `JIRA_USERNAME`, or legacy `JIRA_EMAIL` / `ATLASSIAN_USER` env vars.
+- `api_token` (String, Sensitive) - The Jira PAT. Can also be set via `jira_pat_rw`, `JIRA_PAT_RW`, or legacy `JIRA_API_TOKEN` / `ATLASSIAN_TOKEN` env vars.
+- `project_id` (String) - Numeric Jira project ID for Data Center rule operations. Can also be set via `jira_id`, `JIRA_ID`, or `JIRA_TEST_PROJECT_ID`.
 - `webhook_user` (String) - Email for outgoing webhook Basic auth (service account). Can also be set via `JIRA_WEBHOOK_USER` env var.
 - `webhook_token` (String, Sensitive) - API token for outgoing webhook Basic auth. Can also be set via `JIRA_WEBHOOK_TOKEN` env var.
 - `field_aliases` (Map of String) - Map of friendly alias names to Jira custom field IDs (e.g. `release_version = "customfield_10709"`). Aliases can be used in smart values and as bare arg values; the provider resolves them to field IDs on write and reverses on read.
 
-All three of `site_url`, `email`, and `api_token` must be provided — either in the provider block, via env vars, or a combination.
+The Jira URL, username, and PAT are required. Jira Data Center also needs a numeric project ID from `project_id`, `jira_id`, `JIRA_ID`, or `JIRA_TEST_PROJECT_ID`.

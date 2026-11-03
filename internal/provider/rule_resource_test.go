@@ -2,23 +2,32 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-// testAccCheckRuleResourceDestroy verifies that all test rules are DISABLED
-// after terraform destroy (the API has no DELETE endpoint).
+// testAccCheckRuleResourceDestroy verifies Cloud test rules are DISABLED after destroy.
 func testAccCheckRuleResourceDestroy(s *terraform.State) error {
 	c, err := testAccNewClient()
 	if err != nil {
 		return fmt.Errorf("creating test client: %w", err)
 	}
-
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "jira-automation_rule" {
+			continue
+		}
+		if c.IsDataCenter {
+			rules, err := c.ListProjectRules(c.ProjectID)
+			if err != nil {
+				return fmt.Errorf("listing project rules after destroy: %w", err)
+			}
+			for _, rule := range rules {
+				if rule.UUID == rs.Primary.ID {
+					return fmt.Errorf("rule %s still exists after destroy", rs.Primary.ID)
+				}
+			}
 			continue
 		}
 		rule, err := c.GetRule(rs.Primary.ID)
@@ -277,6 +286,10 @@ func TestAccRuleResource_addReleaseRelatedWorkDebug(t *testing.T) {
 
 func testAccRuleResourceConfig_basic(name string) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -296,11 +309,15 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_comment(name string) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -320,11 +337,15 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_enabled(name string, enabled bool) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[3]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   enabled    = %[2]t
@@ -345,11 +366,15 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, enabled, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, enabled, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_triggerJSON(name string) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -371,11 +396,15 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_componentsJSON(name string) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -397,11 +426,15 @@ resource "jira-automation_rule" "test" {
     }
   ])
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_condition(name string) string {
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -437,12 +470,13 @@ resource "jira-automation_rule" "test" {
     }]
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_aliases(name string) string {
 	return fmt.Sprintf(`
 provider "jira-automation" {
+	project_id = %[2]q
   field_aliases = {
     my_status = "status"
   }
@@ -467,7 +501,7 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"))
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
 }
 
 func testAccRuleResourceConfig_webhook(name string, debug bool) string {
@@ -476,6 +510,10 @@ func testAccRuleResourceConfig_webhook(name string, debug bool) string {
 		debugArg = `      debug         = "true"`
 	}
 	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+
 resource "jira-automation_rule" "test" {
   name       = %[1]q
   project_id = %[2]q
@@ -499,5 +537,5 @@ resource "jira-automation_rule" "test" {
     }
   }]
 }
-`, name, os.Getenv("JIRA_TEST_PROJECT_ID"), debugArg)
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"), debugArg)
 }

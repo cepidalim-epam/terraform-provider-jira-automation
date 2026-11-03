@@ -38,7 +38,7 @@ func loadExample(t *testing.T, filename string, replacements map[string]string) 
 func defaultReplacements(testName string, exampleName string) map[string]string {
 	return map[string]string{
 		exampleName:                         `"` + testName + `"`,
-		`project_id = "10001"`:              `project_id = "` + os.Getenv("JIRA_TEST_PROJECT_ID") + `"`,
+		`project_id = "10001"`:              `project_id = "` + firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID") + `"`,
 		`version_field = "release_version"`: `version_field = "customfield_10020"`,
 	}
 }

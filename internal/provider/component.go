@@ -27,7 +27,7 @@ type innerActionModel struct {
 }
 
 // componentBuilder builds the API JSON for a single action from user args.
-type componentBuilder func(args map[string]string, cloudID, webhookUser, webhookToken string) (json.RawMessage, error)
+type componentBuilder func(args map[string]string, jiraID, webhookUser, webhookToken string) (json.RawMessage, error)
 
 // componentParser extracts user-facing args from the API JSON for a single action.
 type componentParser func(raw json.RawMessage) (map[string]string, error)
@@ -186,7 +186,7 @@ func buildComment(args map[string]string, _, _, _ string) (json.RawMessage, erro
 	return json.Marshal(action)
 }
 
-func buildAddReleaseRelatedWork(args map[string]string, cloudID, webhookUser, webhookToken string) (json.RawMessage, error) {
+func buildAddReleaseRelatedWork(args map[string]string, jiraID, webhookUser, webhookToken string) (json.RawMessage, error) {
 	versionField := args["version_field"]
 	category := args["category"]
 	title := args["title"]
@@ -200,8 +200,11 @@ func buildAddReleaseRelatedWork(args map[string]string, cloudID, webhookUser, we
 
 	webhookURL := fmt.Sprintf(
 		"https://api.atlassian.com/ex/jira/%s/rest/api/3/version/{{issue.%s.format(\"###\")}}/relatedwork",
-		cloudID, versionField,
+		jiraID, versionField,
 	)
+	if strings.HasPrefix(jiraID, "http://") || strings.HasPrefix(jiraID, "https://") {
+		webhookURL = fmt.Sprintf("%s/rest/api/2/version/{{issue.%s.format(\"###\")}}/relatedwork", strings.TrimRight(jiraID, "/"), versionField)
+	}
 
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(webhookUser+":"+webhookToken))
 
@@ -244,7 +247,7 @@ func buildAddReleaseRelatedWork(args map[string]string, cloudID, webhookUser, we
 }
 
 // buildDebugLogs returns 4 log actions that dump useful runtime info for add_release_related_work.
-func buildDebugLogs(args map[string]string, cloudID string) ([]json.RawMessage, error) {
+func buildDebugLogs(args map[string]string, jiraID string) ([]json.RawMessage, error) {
 	versionField := args["version_field"]
 	category := args["category"]
 	title := args["title"]
@@ -252,8 +255,11 @@ func buildDebugLogs(args map[string]string, cloudID string) ([]json.RawMessage, 
 
 	webhookURL := fmt.Sprintf(
 		"https://api.atlassian.com/ex/jira/%s/rest/api/3/version/{{issue.%s.format(\"###\")}}/relatedwork",
-		cloudID, versionField,
+		jiraID, versionField,
 	)
+	if strings.HasPrefix(jiraID, "http://") || strings.HasPrefix(jiraID, "https://") {
+		webhookURL = fmt.Sprintf("%s/rest/api/2/version/{{issue.%s.format(\"###\")}}/relatedwork", strings.TrimRight(jiraID, "/"), versionField)
+	}
 
 	customBody := map[string]string{
 		"category": category,
@@ -343,7 +349,7 @@ func parseComment(raw json.RawMessage) (map[string]string, error) {
 
 // relatedworkURLPattern matches the webhook URL pattern for add_release_related_work.
 var relatedworkURLPattern = regexp.MustCompile(
-	`^https://api\.atlassian\.com/ex/jira/[^/]+/rest/api/3/version/\{\{issue\.([^.]+)\.format\("###"\)\}\}/relatedwork$`,
+	`^(?:https://api\.atlassian\.com/ex/jira/[^/]+/rest/api/3|https?://[^/]+/rest/api/2)/version/\{\{issue\.([^.]+)\.format\("###"\)\}\}/relatedwork$`,
 )
 
 func parseAddReleaseRelatedWork(raw json.RawMessage) (map[string]string, error) {

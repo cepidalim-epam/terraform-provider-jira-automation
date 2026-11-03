@@ -24,7 +24,7 @@ output "rules" {
 ### Read-Only
 
 - `rules` (List of Object) - All automation rule summaries. Each entry has:
-  - `uuid` (String) - Rule UUID.
+  - `uuid` (String) - Identifier returned in this field: Cloud UUID or numeric Data Center rule ID.
   - `name` (String) - Rule name.
   - `state` (String) - `ENABLED` or `DISABLED`.
   - `enabled` (Boolean) - Whether the rule is enabled.
