@@ -111,7 +111,9 @@ resource "jira-automation_rule" "conditional_comment" {
 
 ### Raw JSON (fall-back)
 
-When the HCL helpers don't cover your trigger or action type, use `trigger_json` and `components_json` directly. The provider performs semantic JSON comparison so key order and whitespace are ignored during plan.
+When the HCL helpers don't cover your trigger or action type, use `trigger_json` and `components_json` directly. The provider performs semantic JSON comparison so key order and whitespace are ignored during plan. Jira-assigned component metadata and omitted schema versions are reconciled with the configured JSON; explicit schema versions and substantive changes remain significant.
+
+For Jira Data Center, the provider supplies the known event values for issue-created and status-transition triggers when omitted. Other event trigger types must supply the values required by Jira. Explicit values are preserved. Jira may add `synchronous = false` on read.
 
 ```terraform
 resource "jira-automation_rule" "json_fallback" {

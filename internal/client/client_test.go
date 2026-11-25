@@ -269,6 +269,32 @@ func TestUpdateRuleDataCenterPreservesExportMetadata(t *testing.T) {
 	}
 }
 
+func TestMergeDataCenterComponentRemovesValueFields(t *testing.T) {
+	var existing, planned map[string]interface{}
+	if err := json.Unmarshal([]byte(`{"id":"1","component":"ACTION","type":"edit","schemaVersion":6,"value":{"keep":true,"remove":true},"children":[{"id":"2","component":"ACTION","type":"log","value":"old"}]}`), &existing); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(`{"component":"ACTION","type":"edit","value":{"keep":true},"children":[{"component":"ACTION","type":"log","value":"new"}]}`), &planned); err != nil {
+		t.Fatal(err)
+	}
+	result := mergeDataCenterComponent(existing, planned, false).(map[string]interface{})
+	if result["id"] != "1" || result["schemaVersion"] != float64(6) {
+		t.Fatalf("metadata lost: %v", result)
+	}
+	value := result["value"].(map[string]interface{})
+	if _, exists := value["remove"]; exists {
+		t.Fatalf("removed value retained: %v", value)
+	}
+	preserved := mergeDataCenterComponent(existing, planned, true).(map[string]interface{})
+	if preserved["value"].(map[string]interface{})["remove"] != true {
+		t.Fatalf("structured value metadata lost: %v", preserved)
+	}
+	child := result["children"].([]interface{})[0].(map[string]interface{})
+	if child["id"] != "2" || child["value"] != "new" {
+		t.Fatalf("child merge = %v", child)
+	}
+}
+
 func TestSetRuleStateDataCenter(t *testing.T) {
 	var putSeen bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -163,10 +163,12 @@ type CreateRuleResponse struct {
 
 // UpdateRuleRequest is the payload for PUT /rule/{uuid}.
 type UpdateRuleRequest struct {
-	Name       string            `json:"name"`
-	Enabled    bool              `json:"-"`
-	Trigger    json.RawMessage   `json:"trigger"`
-	Components []json.RawMessage `json:"components"`
+	Name                    string            `json:"name"`
+	Enabled                 bool              `json:"-"`
+	Trigger                 json.RawMessage   `json:"trigger"`
+	Components              []json.RawMessage `json:"components"`
+	PreserveTriggerValue    bool              `json:"-"`
+	PreserveComponentValues bool              `json:"-"`
 }
 
 // SetRuleStateRequest is the payload for PUT /rule/{uuid}/state.
@@ -715,6 +717,9 @@ func (c *Client) CreateRule(rule CreateRuleRequest) (string, error) {
 	if uuid == "" {
 		uuid = result.RuleUUID
 	}
+	if uuid == "" {
+		return "", fmt.Errorf("create rule response did not include a rule UUID")
+	}
 
 	return uuid, nil
 }
@@ -812,7 +817,7 @@ func (c *Client) UpdateRule(uuid string, update UpdateRuleRequest) error {
 		return fmt.Errorf("parsing trigger: %w", err)
 	}
 	if c.IsDataCenter {
-		trigger = mergeDataCenterComponent(ruleMap["trigger"], trigger)
+		trigger = mergeDataCenterComponent(ruleMap["trigger"], trigger, update.PreserveTriggerValue)
 	} else {
 		stripComponentIDs(trigger)
 	}
@@ -825,7 +830,7 @@ func (c *Client) UpdateRule(uuid string, update UpdateRuleRequest) error {
 			return fmt.Errorf("parsing component: %w", err)
 		}
 		if c.IsDataCenter {
-			component = mergeDataCenterComponent(existingComponentAt(ruleMap["components"], len(components)), component)
+			component = mergeDataCenterComponent(existingComponentAt(ruleMap["components"], len(components)), component, update.PreserveComponentValues)
 		} else {
 			stripComponentIDs(component)
 		}
@@ -874,22 +879,49 @@ func existingComponentAt(raw interface{}, index int) interface{} {
 	return components[index]
 }
 
-func mergeDataCenterComponent(existing, planned interface{}) interface{} {
+func mergeDataCenterComponent(existing, planned interface{}, preserveValue bool) interface{} {
 	existingMap, existingIsMap := existing.(map[string]interface{})
 	plannedMap, plannedIsMap := planned.(map[string]interface{})
-	if !existingIsMap || !plannedIsMap {
-		return planned
-	}
-	if existingMap["type"] != plannedMap["type"] {
+	if !existingIsMap || !plannedIsMap || existingMap["type"] != plannedMap["type"] {
 		return planned
 	}
 
-	merged := make(map[string]interface{}, len(existingMap)+len(plannedMap))
-	for key, value := range existingMap {
+	merged := make(map[string]interface{}, len(plannedMap)+6)
+	for key, value := range plannedMap {
 		merged[key] = value
 	}
-	for key, value := range plannedMap {
-		merged[key] = mergeDataCenterComponent(existingMap[key], value)
+	if preserveValue {
+		if oldValue, ok := existingMap["value"].(map[string]interface{}); ok {
+			if newValue, ok := plannedMap["value"].(map[string]interface{}); ok {
+				value := make(map[string]interface{}, len(oldValue)+len(newValue))
+				for key, v := range oldValue {
+					value[key] = v
+				}
+				for key, v := range newValue {
+					value[key] = v
+				}
+				merged["value"] = value
+			}
+		}
+	}
+	// Raw JSON values replace existing values; only envelope metadata is retained.
+	for _, key := range []string{"id", "parentId", "conditionParentId", "connectionId", "schemaVersion"} {
+		if _, specified := plannedMap[key]; !specified {
+			if value, exists := existingMap[key]; exists {
+				merged[key] = value
+			}
+		}
+	}
+	for _, key := range []string{"children", "conditions"} {
+		plannedChildren, ok := plannedMap[key].([]interface{})
+		if !ok {
+			continue
+		}
+		children := make([]interface{}, len(plannedChildren))
+		for i, child := range plannedChildren {
+			children[i] = mergeDataCenterComponent(existingComponentAt(existingMap[key], i), child, preserveValue)
+		}
+		merged[key] = children
 	}
 	return merged
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"terraform-provider-jira-automation/internal/client"
 
@@ -237,6 +238,14 @@ func (r *ruleResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	// Retain the remote ID even when a subsequent read fails so Terraform can
+	// track the created rule rather than losing it and creating duplicates.
+	plan.ID = types.StringValue(uuid)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Read back the created rule to populate computed fields (scope, state, etc.).
 	diags = r.readIntoModel(ctx, uuid, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -301,10 +310,12 @@ func (r *ruleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	updateReq := client.UpdateRuleRequest{
-		Name:       plan.Name.ValueString(),
-		Enabled:    plan.Enabled.ValueBool(),
-		Trigger:    trigger,
-		Components: components,
+		Name:                    plan.Name.ValueString(),
+		Enabled:                 plan.Enabled.ValueBool(),
+		Trigger:                 trigger,
+		Components:              components,
+		PreserveTriggerValue:    plan.Trigger != nil,
+		PreserveComponentValues: plan.Components != nil,
 	}
 
 	if err := r.client.UpdateRule(uuid, updateReq); err != nil {
@@ -433,6 +444,7 @@ func (r *ruleResource) readIntoModel(ctx context.Context, uuid string, model *ru
 			diags.AddError("Error normalizing trigger", err.Error())
 			return diags
 		}
+		triggerNorm = reconcileRawJSON(model.TriggerJSON, triggerNorm, r.client, model.ProjectID.ValueString())
 		model.TriggerJSON = jsontypes.NewNormalizedValue(triggerNorm)
 	}
 
@@ -451,6 +463,7 @@ func (r *ruleResource) readIntoModel(ctx context.Context, uuid string, model *ru
 			diags.AddError("Error normalizing components", err.Error())
 			return diags
 		}
+		componentsNorm = reconcileRawJSON(model.ComponentsJSON, componentsNorm, r.client, model.ProjectID.ValueString())
 		model.ComponentsJSON = jsontypes.NewNormalizedValue(componentsNorm)
 	}
 
@@ -499,13 +512,28 @@ func (r *ruleResource) resolveTriggerJSON(ctx context.Context, model *ruleResour
 			diags.AddError("Invalid trigger_json", err.Error())
 			return nil, diags
 		}
-		if trigger["type"] == "jira.issue.event.trigger:transitioned" {
+		triggerType, _ := trigger["type"].(string)
+		if defaults, known := eventTriggerMappings[triggerType]; known {
 			value, ok := trigger["value"].(map[string]interface{})
 			if !ok {
+				if trigger["value"] != nil {
+					diags.AddError("Invalid trigger_json", "Event trigger value must be a JSON object.")
+					return nil, diags
+				}
 				value = map[string]interface{}{}
 				trigger["value"] = value
 			}
-			value["eventFilters"] = []string{fmt.Sprintf("ari:cloud:jira::project/%s", r.client.ProjectID)}
+			if _, exists := value["eventKey"]; !exists {
+				value["eventKey"] = defaults.eventKey
+			}
+			if _, exists := value["issueEvent"]; !exists {
+				value["issueEvent"] = defaults.issueEvent
+			}
+			if triggerType == "jira.issue.event.trigger:transitioned" {
+				if _, exists := value["eventFilters"]; !exists {
+					value["eventFilters"] = []string{fmt.Sprintf("ari:cloud:jira::project/%s", r.client.ProjectID)}
+				}
+			}
 			encoded, err := json.Marshal(trigger)
 			if err != nil {
 				diags.AddError("Invalid trigger_json", err.Error())
@@ -570,7 +598,7 @@ func normalizeRawJSON(raw json.RawMessage) (string, error) {
 }
 
 func normalizeRawJSONArray(raws []json.RawMessage) (string, error) {
-	var arr []interface{}
+	arr := make([]interface{}, 0, len(raws))
 	for _, raw := range raws {
 		var v interface{}
 		if err := json.Unmarshal(raw, &v); err != nil {
@@ -584,6 +612,121 @@ func normalizeRawJSONArray(raws []json.RawMessage) (string, error) {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// Reuse the configured JSON only when differences are limited to known API
+// metadata and defaults. Meaningful remote changes must remain visible as drift.
+func reconcileRawJSON(prior jsontypes.Normalized, remote string, c *client.Client, projectID string) string {
+	if prior.IsNull() || prior.IsUnknown() {
+		return remote
+	}
+	var configured, actual interface{}
+	if json.Unmarshal([]byte(prior.ValueString()), &configured) != nil || json.Unmarshal([]byte(remote), &actual) != nil {
+		return remote
+	}
+	if projectID == "" && c.IsDataCenter {
+		projectID = c.ProjectID
+	}
+	if equivalentRawComponents(configured, actual, c, projectID) {
+		return prior.ValueString()
+	}
+	return remote
+}
+
+func equivalentRawComponents(configured, actual interface{}, c *client.Client, projectID string) bool {
+	switch planned := configured.(type) {
+	case []interface{}:
+		observed, ok := actual.([]interface{})
+		if !ok || len(planned) != len(observed) {
+			return false
+		}
+		for i := range planned {
+			if !equivalentRawComponents(planned[i], observed[i], c, projectID) {
+				return false
+			}
+		}
+		return true
+	case map[string]interface{}:
+		observed, ok := actual.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		_, hasType := planned["type"].(string)
+		component, hasComponent := planned["component"].(string)
+		if hasType && hasComponent && (component == "TRIGGER" || component == "ACTION" || component == "CONDITION" || component == "CONDITION_BLOCK" || component == "BRANCH") {
+			if planned["component"] == "TRIGGER" && planned["type"] == observed["type"] {
+				if av, ok := observed["value"].(map[string]interface{}); ok {
+					pv, hasValue := planned["value"].(map[string]interface{})
+					_, valueSpecified := planned["value"]
+					triggerType, _ := planned["type"].(string)
+					_, knownEvent := eventTriggerMappings[triggerType]
+					if !valueSpecified && knownEvent {
+						pv = map[string]interface{}{}
+					}
+					if pv != nil {
+						reconcileTriggerDefaults(planned, pv, av, c, projectID)
+						if _, specified := pv["synchronous"]; !specified && av["synchronous"] == false {
+							delete(av, "synchronous")
+						}
+						if !valueSpecified && len(av) == 0 {
+							delete(observed, "value")
+						} else if hasValue {
+							planned["value"] = pv
+						}
+					}
+				}
+			}
+			stripAPIFields(planned)
+			stripAPIFields(observed)
+			if _, hasVersion := planned["schemaVersion"]; !hasVersion {
+				delete(observed, "schemaVersion")
+			}
+		}
+		if len(planned) != len(observed) {
+			return false
+		}
+		for key, value := range planned {
+			other, exists := observed[key]
+			if !exists || !equivalentRawComponents(value, other, c, projectID) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(configured, actual)
+	}
+}
+
+func reconcileTriggerDefaults(trigger, planned, observed map[string]interface{}, c *client.Client, projectID string) {
+	triggerType, _ := trigger["type"].(string)
+	defaults, known := eventTriggerMappings[triggerType]
+	if !known {
+		return
+	}
+	for key, expected := range map[string]string{"eventKey": defaults.eventKey, "issueEvent": defaults.issueEvent} {
+		pv, p := planned[key]
+		av, a := observed[key]
+		if !p && a && av == expected {
+			delete(observed, key)
+		} else if c.IsDataCenter && p && !a && pv == expected {
+			delete(planned, key)
+		}
+	}
+	if triggerType != "jira.issue.event.trigger:transitioned" || projectID == "" {
+		return
+	}
+	jiraID := c.CloudID
+	if c.IsDataCenter {
+		jiraID = ""
+	}
+	expected := []interface{}{fmt.Sprintf("ari:cloud:jira:%s:project/%s", jiraID, projectID)}
+	pv, p := planned["eventFilters"]
+	av, a := observed["eventFilters"]
+	if !p && a && reflect.DeepEqual(av, expected) {
+		delete(observed, "eventFilters")
+	} else if c.IsDataCenter && p && !a && reflect.DeepEqual(pv, expected) {
+		delete(planned, "eventFilters")
+	}
 }
 
 // stripAPIFields recursively removes API-assigned/enriched fields from JSON
@@ -618,14 +761,6 @@ func stripAPIFields(v interface{}) {
 				stripAPIFields(cond)
 			}
 		}
-	}
-
-	// Remove API-enriched fields from trigger/component values.
-	// The API adds eventFilters, eventKey, issueEvent to trigger values.
-	if val, ok := m["value"].(map[string]interface{}); ok {
-		delete(val, "eventFilters")
-		delete(val, "eventKey")
-		delete(val, "issueEvent")
 	}
 }
 

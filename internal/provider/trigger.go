@@ -19,6 +19,18 @@ type triggerBuilder func(args map[string]string, cloudID, projectID string) (jso
 // triggerParser extracts user-facing args from the full API trigger JSON.
 type triggerParser func(raw json.RawMessage) (map[string]string, error)
 
+type eventTriggerDefaults struct {
+	eventKey   string
+	issueEvent string
+}
+
+// These mappings are backed by the Data Center create result and the
+// status-transition export fixture; other event types must supply their values.
+var eventTriggerMappings = map[string]eventTriggerDefaults{
+	"jira.issue.event.trigger:created":      {"jira:issue_created", "issue_created"},
+	"jira.issue.event.trigger:transitioned": {"jira:issue_updated", "issue_generic"},
+}
+
 type triggerDef struct {
 	apiType string
 	build   triggerBuilder

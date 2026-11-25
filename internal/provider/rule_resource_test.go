@@ -41,6 +41,41 @@ func testAccCheckRuleResourceDestroy(s *terraform.State) error {
 	return nil
 }
 
+func TestAccRuleResource_createdTriggerRawJSON(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheckWithProjectID(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckRuleResourceDestroy,
+		Steps: []resource.TestStep{
+			{Config: testAccRuleResourceConfig_createdRawJSON("tf-acc-created-json")},
+			{Config: testAccRuleResourceConfig_createdRawJSON("tf-acc-created-json-updated")},
+		},
+	})
+}
+
+func testAccRuleResourceConfig_createdRawJSON(name string) string {
+	return fmt.Sprintf(`
+provider "jira-automation" {
+  project_id = %[2]q
+}
+resource "jira-automation_rule" "test" {
+  name       = %[1]q
+  project_id = %[2]q
+  trigger_json = jsonencode({
+    component = "TRIGGER"
+    type      = "jira.issue.event.trigger:created"
+    value     = { synchronous = false }
+  })
+  components_json = jsonencode([{
+    component = "ACTION"
+    type      = "codebarrel.action.log"
+    value     = "tf-acc-test: issue created"
+    children  = []
+  }])
+}
+`, name, firstEnv("jira_id", "JIRA_ID", "JIRA_TEST_PROJECT_ID"))
+}
+
 // --- Phase 1: Basic CRUD ---
 
 func TestAccRuleResource_basic(t *testing.T) {
