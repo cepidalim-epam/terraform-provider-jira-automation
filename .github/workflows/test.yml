@@ -19,6 +19,12 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+          terraform_wrapper: false
+
       - name: Check formatting
         run: |
           test -z "$(gofmt -l main.go internal)" || (echo "Unformatted files found:" && gofmt -l main.go internal && exit 1)
