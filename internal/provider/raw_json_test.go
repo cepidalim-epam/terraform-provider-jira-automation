@@ -33,6 +33,33 @@ func TestReconcileRawJSON(t *testing.T) {
 			remote:     `{"component":"TRIGGER","type":"jira.issue.event.trigger:created","value":{"synchronous":true}}`,
 		},
 		{
+			name:       "field changed trigger omitted null event values",
+			configured: `{"component":"TRIGGER","schemaVersion":2,"type":"jira.issue.field.changed","value":{"eventKey":null,"issueEvent":null,"actions":["edit","create"],"fields":[{"type":"field","value":"labels"}],"synchronous":false}}`,
+			remote:     `{"component":"TRIGGER","schemaVersion":2,"type":"jira.issue.field.changed","value":{"actions":["edit","create"],"fields":[{"type":"field","value":"labels"}],"synchronous":false}}`,
+			equivalent: true,
+		},
+		{
+			name:       "condition omitted null compare metadata",
+			configured: `[{"component":"CONDITION","schemaVersion":3,"type":"jira.issue.condition","value":{"compareValue":{"modifier":null,"source":null,"multiValue":false,"type":"ID","value":"6"},"comparison":"EQUALS"}}]`,
+			remote:     `[{"component":"CONDITION","schemaVersion":3,"type":"jira.issue.condition","value":{"compareValue":{"multiValue":false,"type":"ID","value":"6"},"comparison":"EQUALS"}}]`,
+			equivalent: true,
+		},
+		{
+			name:       "non-null compare modifier remains significant",
+			configured: `{"component":"CONDITION","type":"jira.issue.condition","value":{"compareValue":{"modifier":null,"value":"6"}}}`,
+			remote:     `{"component":"CONDITION","type":"jira.issue.condition","value":{"compareValue":{"modifier":"changed","value":"6"}}}`,
+		},
+		{
+			name:       "non-null event field remains significant",
+			configured: `{"component":"TRIGGER","type":"jira.issue.field.changed","value":{"eventKey":null}}`,
+			remote:     `{"component":"TRIGGER","type":"jira.issue.field.changed","value":{"eventKey":"other"}}`,
+		},
+		{
+			name:       "arbitrary null field remains significant",
+			configured: `{"component":"ACTION","type":"jira.issue.outgoing.webhook","value":{"customBody":null}}`,
+			remote:     `{"component":"ACTION","type":"jira.issue.outgoing.webhook","value":{}}`,
+		},
+		{
 			name:       "component defaults and empty metadata",
 			configured: `[{"component":"CONDITION","type":"jira.issue.condition","value":{"comparison":"EQUALS"}},{"component":"ACTION","type":"webhook","schemaVersion":2,"children":[],"conditions":[],"parentId":null,"conditionParentId":null,"value":{"url":"test"}}]`,
 			remote:     `[{"component":"CONDITION","schemaVersion":3,"type":"jira.issue.condition","value":{"comparison":"EQUALS"}},{"component":"ACTION","schemaVersion":2,"type":"webhook","value":{"url":"test"}}]`,

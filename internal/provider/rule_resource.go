@@ -654,6 +654,9 @@ func equivalentRawComponents(configured, actual interface{}, c *client.Client, p
 		_, hasType := planned["type"].(string)
 		component, hasComponent := planned["component"].(string)
 		if hasType && hasComponent && (component == "TRIGGER" || component == "ACTION" || component == "CONDITION" || component == "CONDITION_BLOCK" || component == "BRANCH") {
+			if planned["type"] == observed["type"] {
+				reconcileOmittedNullFields(planned, observed)
+			}
 			if planned["component"] == "TRIGGER" && planned["type"] == observed["type"] {
 				if av, ok := observed["value"].(map[string]interface{}); ok {
 					pv, hasValue := planned["value"].(map[string]interface{})
@@ -694,6 +697,38 @@ func equivalentRawComponents(configured, actual interface{}, c *client.Client, p
 		return true
 	default:
 		return reflect.DeepEqual(configured, actual)
+	}
+}
+
+// Jira's export omits these null fields. Restrict this to observed component
+// types and paths; null elsewhere can carry meaningful configuration.
+func reconcileOmittedNullFields(planned, observed map[string]interface{}) {
+	pv, pok := planned["value"].(map[string]interface{})
+	av, aok := observed["value"].(map[string]interface{})
+	if !pok || !aok {
+		return
+	}
+	switch planned["type"] {
+	case "jira.issue.field.changed":
+		reconcileNullKeys(pv, av, "eventKey", "issueEvent")
+	case "jira.issue.condition":
+		pc, pok := pv["compareValue"].(map[string]interface{})
+		ac, aok := av["compareValue"].(map[string]interface{})
+		if pok && aok {
+			reconcileNullKeys(pc, ac, "modifier", "source")
+		}
+	}
+}
+
+func reconcileNullKeys(planned, observed map[string]interface{}, keys ...string) {
+	for _, key := range keys {
+		pv, p := planned[key]
+		av, a := observed[key]
+		if p && pv == nil && !a {
+			delete(planned, key)
+		} else if a && av == nil && !p {
+			delete(observed, key)
+		}
 	}
 }
 

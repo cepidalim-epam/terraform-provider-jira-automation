@@ -27,8 +27,9 @@ func TestRawJSONDataCenterTerraformLifecycle(t *testing.T) {
 				w.WriteHeader(400)
 				return
 			}
-			value := rule["trigger"].(map[string]interface{})["value"].(map[string]interface{})
-			if value["eventKey"] != "jira:issue_created" || value["issueEvent"] != "issue_created" {
+			trigger := rule["trigger"].(map[string]interface{})
+			value := trigger["value"].(map[string]interface{})
+			if trigger["type"] == "jira.issue.event.trigger:created" && (value["eventKey"] != "jira:issue_created" || value["issueEvent"] != "issue_created") {
 				t.Errorf("incorrect created event: %v", value)
 				w.WriteHeader(400)
 				return
@@ -44,10 +45,23 @@ func TestRawJSONDataCenterTerraformLifecycle(t *testing.T) {
 			var exported map[string]interface{}
 			json.Unmarshal(copyBytes, &exported)
 			trigger := exported["trigger"].(map[string]interface{})
-			trigger["schemaVersion"] = 1
-			trigger["value"] = map[string]interface{}{"synchronous": false}
+			if trigger["type"] == "jira.issue.event.trigger:created" {
+				trigger["schemaVersion"] = 1
+				trigger["value"] = map[string]interface{}{"synchronous": false}
+			} else {
+				value := trigger["value"].(map[string]interface{})
+				delete(value, "eventKey")
+				delete(value, "issueEvent")
+			}
 			for _, v := range exported["components"].([]interface{}) {
-				v.(map[string]interface{})["schemaVersion"] = 3
+				component := v.(map[string]interface{})
+				component["schemaVersion"] = 3
+				if value, ok := component["value"].(map[string]interface{}); ok {
+					if compare, ok := value["compareValue"].(map[string]interface{}); ok {
+						delete(compare, "modifier")
+						delete(compare, "source")
+					}
+				}
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{"rules": []interface{}{exported}})
 		case r.Method == http.MethodPut && r.URL.Path == "/rest/cb-automation/latest/project/123/rule/42":
@@ -90,11 +104,38 @@ resource "jira-automation_rule" "test" {
 }
 `, server.URL, name)
 	}
+	fieldChangedConfig := func(name string) string {
+		return fmt.Sprintf(`
+provider "jira-automation" {
+  site_url = %q
+  email = "test"
+  api_token = "test"
+  project_id = "123"
+}
+resource "jira-automation_rule" "test" {
+  name = %q
+  trigger_json = jsonencode({
+    component = "TRIGGER"
+    schemaVersion = 2
+    type = "jira.issue.field.changed"
+    value = { eventKey = null, issueEvent = null, synchronous = false, actions = ["edit", "create"], fields = [{ type = "field", value = "labels" }] }
+  })
+  components_json = jsonencode([{
+    component = "CONDITION"
+    schemaVersion = 3
+    type = "jira.issue.condition"
+    value = { comparison = "EQUALS", compareValue = { modifier = null, source = null, multiValue = false, type = "ID", value = "6" } }
+  }])
+}
+`, server.URL, name)
+	}
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{Config: config("created")},
 			{Config: config("updated")},
+			{Config: fieldChangedConfig("field changed")},
+			{Config: fieldChangedConfig("field changed updated")},
 		},
 	})
 }
